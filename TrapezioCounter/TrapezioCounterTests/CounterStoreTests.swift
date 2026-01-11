@@ -24,7 +24,8 @@ final class CounterStoreTests: XCTestCase {
         
         store = CounterStore(
             screen: screen,
-            divideUsecase: fakeUsecase
+            divideUsecase: fakeUsecase,
+            navigator: nil
         )
     }
 
@@ -38,9 +39,9 @@ final class CounterStoreTests: XCTestCase {
         XCTAssertEqual(store.state.count, 9)
     }
 
-    func test_printValue_doesNotMutateState() {
+    func test_goToSummary_withNilNavigator_doesNotMutateState() {
         let initialCount = store.state.count
-        store.handle(event: .printValue)
+        store.handle(event: .goToSummary)
         XCTAssertEqual(store.state.count, initialCount)
     }
 

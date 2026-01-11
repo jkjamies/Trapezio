@@ -10,10 +10,28 @@ import Trapezio
 
 struct ContentView: View {
     var body: some View {
-        CounterFactory.make(screen: CounterScreen(initialValue: 0))
+        TrapezioNavigationHost(root: CounterScreen(initialValue: 0)) { screen, navigator in
+            switch screen {
+            case let counter as CounterScreen:
+                CounterFactory.make(screen: counter, navigator: navigator)
+            case let summary as SummaryScreen:
+                SummaryFactory.make(screen: summary, navigator: navigator)
+            default:
+                EmptyView()
+            }
+        }
     }
 }
 
 #Preview {
-    CounterFactory.make(screen: CounterScreen(initialValue: 99))
+    TrapezioNavigationHost(root: CounterScreen(initialValue: 99)) { screen, navigator in
+        switch screen {
+        case let counter as CounterScreen:
+            CounterFactory.make(screen: counter, navigator: navigator)
+        case let summary as SummaryScreen:
+            SummaryFactory.make(screen: summary, navigator: navigator)
+        default:
+            EmptyView()
+        }
+    }
 }

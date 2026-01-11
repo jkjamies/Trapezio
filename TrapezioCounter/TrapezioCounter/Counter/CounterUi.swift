@@ -26,9 +26,9 @@ struct CounterUI: TrapezioUI {
             }
             
             Divider().padding(.horizontal)
-            
-            Button("Print Current Value") {
-                onEvent(.printValue)
+
+            Button("Go To Summary") {
+                onEvent(.goToSummary)
             }
             .font(.headline)
         }

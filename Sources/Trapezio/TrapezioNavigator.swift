@@ -8,24 +8,31 @@
 import Foundation
 
 /// Hoists navigation and coordination logic out of the feature.
+@MainActor
 public protocol TrapezioNavigator: AnyObject {
-    
+
     // MARK: - Navigation
-    
-    /// Navigates to a strongly-typed TrapezioScreen.
+
+    /// Requests navigation to a strongly-typed TrapezioScreen.
     func goTo(_ screen: any TrapezioScreen)
-    
-    /// Navigates using a custom identifier (e.g. an enum's raw string value).
+
+    /// Emits a custom navigation/interop request.
+    ///
+    /// This is intentionally not tied to SwiftUI's `NavigationStack`. Integrators can
+    /// interpret this to perform UIKit navigation, deep links, tab switching, etc.
     func goTo(custom: String)
-    
+
     // MARK: - Dismissal
-    
+
     /// Dismisses the current active feature.
     func dismiss()
-    
-    /// Dismisses back to a specific strongly-typed TrapezioScreen.
+
+    /// Pops to the root of the current navigation stack.
+    func dismissToRoot()
+
+    /// Requests dismissal back to a specific strongly-typed TrapezioScreen.
     func dismissTo(_ screen: any TrapezioScreen)
-    
-    /// Dismisses back to a specific custom identifier string.
+
+    /// Emits a custom dismissal/interop request.
     func dismissTo(custom: String)
 }
