@@ -1,0 +1,33 @@
+name: Trapezio CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+# This is the "Cleanup Crew"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-library:
+    name: Library (SPM)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Package Tests
+        run: swift test --parallel
+
+  test-app:
+    name: iOS App (Sample)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run App Tests
+        run: |
+          xcodebuild test \
+            -scheme TrapezioCounter \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' \
+            -quiet
