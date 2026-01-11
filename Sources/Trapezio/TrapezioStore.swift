@@ -20,7 +20,7 @@ open class TrapezioStore<S: TrapezioScreen, State: TrapezioState, Event: Trapezi
     
     open func handle(event: Event) { }
     
-    public func update(_ transform: (inout State) -> Void) {
+    public final func update(_ transform: (inout State) -> Void) {
         var copy = self.state
         transform(&copy)
         if copy != self.state {

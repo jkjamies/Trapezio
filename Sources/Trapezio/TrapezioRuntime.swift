@@ -8,7 +8,7 @@
 import SwiftUI
 
 @MainActor
-public struct TrapezioRuntime<S, State, Event, Store, UI>: View
+internal struct TrapezioRuntime<S, State, Event, Store, UI>: View
 where S: TrapezioScreen, State: TrapezioState, Event: TrapezioEvent,
       Store: TrapezioStore<S, State, Event>, UI: TrapezioUI,
       UI.State == State, UI.Event == Event {
@@ -16,7 +16,7 @@ where S: TrapezioScreen, State: TrapezioState, Event: TrapezioEvent,
     @ObservedObject var presenter: Store
     private let ui: UI
     
-    public init(presenter: Store, ui: UI) {
+    internal init(presenter: Store, ui: UI) {
         self.presenter = presenter
         self.ui = ui
     }
