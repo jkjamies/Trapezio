@@ -23,12 +23,11 @@ open class TrapezioStore<S: TrapezioScreen, State: TrapezioState, Event: Trapezi
     public func update(_ transform: (inout State) -> Void) {
         var copy = self.state
         transform(&copy)
-        self.state = copy
+        if copy != self.state {
+            self.state = copy
+        }
     }
 
-    /// The "Magic Link": This connects the Store to the UI.
-    /// Since the Store knows its State/Event types, it can safely
-    /// initialize the Runtime engine for the user.
     @MainActor
     public func render<U: TrapezioUI>(with ui: U) -> some View
     where U.State == State, U.Event == Event {
