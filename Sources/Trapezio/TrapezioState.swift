@@ -8,4 +8,4 @@
 import Foundation
 
 /// Marker protocol for all feature state models
-public protocol TrapezioState {}
+public protocol TrapezioState: Equatable { }
