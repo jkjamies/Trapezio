@@ -8,13 +8,20 @@
 import Foundation
 import Trapezio
 
+@MainActor
 final class CounterStore: TrapezioStore<CounterScreen, CounterState, CounterEvent> {
     private let divideUsecase: any DivideUsecaseProtocol
+    private weak var navigator: (any TrapezioNavigator)?
     
-    init(screen: CounterScreen, divideUsecase: any DivideUsecaseProtocol) {
-            self.divideUsecase = divideUsecase
-            super.init(screen: screen, initialState: CounterState(count: screen.initialValue))
-        }
+    init(
+        screen: CounterScreen,
+        divideUsecase: any DivideUsecaseProtocol,
+        navigator: (any TrapezioNavigator)?
+    ) {
+        self.divideUsecase = divideUsecase
+        self.navigator = navigator
+        super.init(screen: screen, initialState: CounterState(count: screen.initialValue))
+    }
     
     override func handle(event: CounterEvent) {
         switch event {
@@ -27,8 +34,8 @@ final class CounterStore: TrapezioStore<CounterScreen, CounterState, CounterEven
                 let result = await divideUsecase.execute(value: state.count)
                 update { $0.count = result }
             }
-        case .printValue:
-            print("Trapezio Counter Value: \(state.count)")
+        case .goToSummary:
+            navigator?.goTo(SummaryScreen(value: state.count))
         }
     }
 }

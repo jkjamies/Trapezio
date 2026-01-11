@@ -10,12 +10,14 @@ import Trapezio
 
 struct CounterFactory {
     @ViewBuilder
-    static func make(screen: CounterScreen) -> some View {
+    static func make(screen: CounterScreen, navigator: (any TrapezioNavigator)?) -> some View {
         // This line is what DI code essentially does:
         // Look at dependency graph and provide the real impl.
         let usecase = DivideUsecase()
         
-        let store = CounterStore(screen: screen, divideUsecase: usecase)
-        store.render(with: CounterUI())
+        TrapezioContainer(
+            makeStore: CounterStore(screen: screen, divideUsecase: usecase, navigator: navigator),
+            ui: CounterUI()
+        )
     }
 }
