@@ -265,7 +265,7 @@ struct TrapezioMessageManagerTests {
 struct ClosureTrapezioInteropTests {
 
     @Test("send delegates to closure")
-    func sendDelegatesToClosure() {
+    @MainActor func sendDelegatesToClosure() {
         var received: TrapezioInteropEvent?
         let interop = ClosureTrapezioInterop { event in
             received = event
