@@ -7,6 +7,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 # This is the "Cleanup Crew"
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,18 +21,65 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Run Package Tests
         run: swift test --parallel
         working-directory: MESA
+
+  build-ios:
+    name: Library (iOS ${{ matrix.deployment_target }})
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        # `swift test` only ever compiles for macOS, so the declared iOS minimum was never
+        # verified by CI. Build each library against it explicitly.
+        deployment_target: [ "16.0" ]
+        scheme: [ Trapezio, TrapezioNavigation, Strata, TrapezioTest ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build ${{ matrix.scheme }} for iOS
+        working-directory: MESA
+        run: |
+          xcodebuild build \
+            -scheme "${{ matrix.scheme }}" \
+            -destination 'generic/platform=iOS' \
+            IPHONEOS_DEPLOYMENT_TARGET="${{ matrix.deployment_target }}" \
+            -quiet
 
   test-app:
     name: iOS App (Sample)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Run App Tests
         run: |
           xcodebuild test \
             -scheme Counter \
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' \
             -quiet
+
+  check-instructions:
+    name: Agent instructions in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify mirrors match CLAUDE.md
+        run: |
+          # CLAUDE.md is canonical; the other three are copies. Four hand-maintained
+          # near-duplicates is how they drifted apart in the first place.
+          status=0
+          for mirror in GEMINI.md .junie/guidelines.md .github/copilot-instructions.md; do
+            if ! cmp -s CLAUDE.md "$mirror"; then
+              echo "::error file=$mirror::$mirror differs from CLAUDE.md — copy CLAUDE.md over it"
+              status=1
+            fi
+          done
+          exit $status
