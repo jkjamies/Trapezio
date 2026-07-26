@@ -40,6 +40,7 @@ stays in place for it.
 | S4-7 · no `SECURITY.md` | Fixed |
 | S4-8 · no DI story | **Open** — pairs with the deep-link registry |
 | S4-9 … S4-12, sample polish | Fixed except SwiftUI-layer view tests |
+| S3-9 · skills generate against the old API | Fixed — all nine updated (missed in the original pass) |
 
 Closed after the first pass, in **0.3.0**: S2-11 (`TrapezioInterop` is now `@MainActor`),
 S4-5 and S4-6 (the sample's store sets a file-protection class and degrades to in-memory
@@ -50,6 +51,19 @@ observation layer moved to `@Observable`. That was listed in the review only as 
 S3-8; it landed as a deliberate release decision. It removes the manual `objectWillChange.send()`
 and gives property-granular invalidation, and it makes reading `state` off the main actor a
 compile error rather than a documented rule.
+
+**S3-9, missed in the original pass.** The review covered `MESA/`, `Counter/`, CI, and the four
+instruction files, but never opened `.claude/skills/`. Those nine skills are what actually
+generate new code in this repo, and every scaffolding one emitted the pre-0.3.0 API —
+`setupBindings()` from `init`, untracked `strataCollect`, dependencies hoisted out of the
+`TrapezioContainer` autoclosure, a non-isolated `FakeInterop`. `security-check` went further and
+listed `nonisolated(unsafe)` on `TrapezioStore.state` as an *approved* framework pattern, and
+`review` asserted that `executeCatching` throws, which was never true. A stale skill is worse than
+stale prose: it writes the old API into new files. All nine are updated, and the instructions now
+say to update them in the same change as any library API change.
+
+Also fixed here: `AGENTS.md` did not exist. It is now the canonical instructions file, with the
+four tool-specific files as byte-identical copies and the CI sync job comparing against it.
 
 Still open: S2-7 + S4-8 (deep links and the factory registry — one piece of work, deferred by
 request) and view-level tests for `TrapezioContainer` / `TrapezioNavigationHost`.
@@ -96,7 +110,8 @@ And a cluster of documentation claims are contradicted by the code — most shar
 `CLAUDE.md` state that `strataRunCatching` re-throws `CancellationError`, which is the opposite of
 what it does.
 
-Counts: **7 × S1**, **11 × S2**, **8 × S3**, **12 × S4**.
+Counts: **7 × S1**, **11 × S2**, **9 × S3**, **12 × S4**. (S3-9 was added after the
+first pass — see Status.)
 
 ---
 
