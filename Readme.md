@@ -50,12 +50,12 @@ flowchart LR
 
 | Platform | Minimum |
 |:---|:---|
-| iOS | 16.0 |
-| macOS | 13.0 |
+| iOS | 17.0 |
+| macOS | 14.0 |
 
-Trapezio currently uses `ObservableObject` to support iOS 16+. When iOS 17 becomes the minimum deployment target, the observation layer will migrate to `@Observable` for fine-grained tracking, replacing the manual `objectWillChange.send()` + whole-state `Equatable` diff in `TrapezioStore.update(_:)`.
+Trapezio uses the `@Observable` macro, so SwiftUI tracks state reads at **property granularity** — a view reading only `state.count` is not invalidated when an unrelated field changes. This is why the floor is iOS 17; `ObservableObject` invalidated on every published change regardless of what a view actually read.
 
-> The sample app targets iOS 17 because it uses SwiftData. The libraries themselves build against iOS 16.
+> **Upgrading from 0.2.x?** The minimum deployment target moved from iOS 16 / macOS 13. See [Migrating to 0.3.0](#-migrating-to-030).
 
 ---
 
@@ -67,7 +67,7 @@ Add MESA-iOS to your project via SPM:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/jkjamies/MESA-iOS.git", from: "0.2.0")
+    .package(url: "https://github.com/jkjamies/MESA-iOS.git", from: "0.3.0")
 ]
 ```
 
@@ -266,9 +266,10 @@ struct CounterFactory {
 
 ### TrapezioStore Internals
 
-- `@MainActor open class TrapezioStore<S, State, Event>: ObservableObject`
+- `@MainActor @Observable open class TrapezioStore<S, State, Event>`
 - `state` is `public private(set)` and fully `@MainActor`-isolated. Detached work cannot read it directly — take a `Sendable` snapshot with `launch(snapshot:work:reduce:)` instead
-- `update(_ transform:)` — copy-on-write mutation with `Equatable` check to prevent unnecessary SwiftUI re-renders; calls `objectWillChange.send()` manually
+- `update(_ transform:)` — copy-on-write mutation with an `Equatable` check. Assigning an equal value would still notify observers, so the check is what prevents redundant invalidation
+- `@Observable` applies to `TrapezioStore` itself. A subclass's own stored properties are **not** tracked, which is deliberate: feature state belongs in `state`, not in subclass fields
 - `tasks` — a `TrapezioTaskBag` scoping everything the store started; cancelled on deallocation
 - `render(with: ui)` — binds the store to a `TrapezioUI` and returns a `TrapezioRuntime` view
 
@@ -473,6 +474,43 @@ Results are single-consumption — calling `consumeResult` a second time returns
 ### TrapezioInterop
 
 Features communicate with the app shell via `TrapezioInterop.send(_ event:)`. Use `ClosureTrapezioInterop` for closure-based handling at the `TrapezioNavigationHost` level via `onInterop`.
+
+---
+
+## 🚚 Migrating to 0.3.0
+
+0.3.0 is a breaking release. In rough order of how likely you are to hit it:
+
+**Deployment target is now iOS 17 / macOS 14.** Required for `@Observable`.
+
+**`TrapezioStore` is `@Observable`, not `ObservableObject`.** Drop `@StateObject` / `@ObservedObject` on stores and hold them in `@State` (or let `TrapezioContainer` own them, which is the recommended path). `objectWillChange` no longer exists — if you were observing it, use `withObservationTracking` instead. `TrapezioMessageManager` changed the same way.
+
+**`state` is no longer readable off the main actor.** `nonisolated(unsafe)` is gone, because a multi-field struct is not read atomically and any refcounted field raced the main actor's writes. Detached work takes a snapshot instead:
+
+```swift
+// Before — a data race.
+strataLaunch(
+    work: { await useCase.execute(params: self.state.count) },
+    reduce: { result in self.update { $0.count = result } }
+)
+
+// After — the snapshot closure runs on the main actor.
+launch(
+    snapshot: { $0.count },
+    work: { count in await useCase.execute(params: count) },
+    reduce: { [weak self] result in self?.update { $0.count = result } }
+)
+```
+
+**Prefer the store's `launch` / `collect` over the free `strata*` functions.** The instance methods track their task in the store's `TrapezioTaskBag` and cancel it on deallocation. The free functions still exist and still return an untracked task you own. If you were calling `strataCollect` on a stream that never finishes, that task was leaking for the lifetime of the process.
+
+**`StrataException` refines `LocalizedError`.** Existing conformers need no changes. `message` now survives a value being typed as `any Error`, where Foundation's default previously won.
+
+**`TrapezioInterop` is `@MainActor`,** matching `TrapezioNavigator`. Conformers need the same isolation.
+
+**`goTo` ignores a screen already on top of the stack,** so a double tap can no longer push twice. Pushing the same route again from a deeper screen is unaffected.
+
+**Start observation in `onFirstAppear()`.** Conform your store to `TrapezioLifecycle` rather than kicking work off in `init`, so it starts when the view actually appears and is scoped to the store's lifetime.
 
 ---
 

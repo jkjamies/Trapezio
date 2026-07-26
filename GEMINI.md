@@ -86,7 +86,7 @@ flowchart LR
 
 ## 🛠 Tech Stack
 *   **Language**: Swift 5.9+ (Swift 6 Ready).
-*   **UI**: SwiftUI (Declarative).
+*   **UI**: SwiftUI (Declarative) with `@Observable` (iOS 17+ / macOS 14+).
 *   **Architecture**: Trapezio (MVI/UDF), Strata (Clean Arch).
 *   **Persistence**: SwiftData / CoreData (wrapped in Actors).
 *   **Concurrency**: Swift Async/Await, Actors, `AsyncStream`. **No Combine** (legacy only).
@@ -110,7 +110,7 @@ All features MUST implement these 5 components:
 1.  **Screen**: `TrapezioScreen` (`Hashable & Codable`) struct — route identity and parameters.
 2.  **State**: `TrapezioState` (`Equatable`) struct — immutable display data. `Equatable` enables `update()` to skip redundant publishes.
 3.  **Event**: `TrapezioEvent` enum — user intents (marker protocol, no requirements).
-4.  **Store**: `TrapezioStore<S, State, Event>` subclass — `@MainActor ObservableObject` logic owner. `state` is fully `@MainActor`-isolated; `update()` calls `objectWillChange.send()` manually. Detached work must not read `state` directly — use `launch(snapshot:work:reduce:)`.
+4.  **Store**: `TrapezioStore<S, State, Event>` subclass — `@MainActor @Observable` logic owner. `state` is fully `@MainActor`-isolated; `update()` skips the write when the new state is equal, since assigning an equal value would still notify observers. Detached work must not read `state` directly — use `launch(snapshot:work:reduce:)`. `@Observable` covers `TrapezioStore` only; subclass stored properties are not tracked, by design.
 5.  **UI**: `TrapezioUI` conformance — stateless `map(state:onEvent:) -> some View`.
 
 **Wiring**: Use `TrapezioContainer(makeStore:ui:)` to preserve store identity across SwiftUI view updates. Internally calls `store.render(with: ui)` which creates `TrapezioRuntime`.
@@ -233,4 +233,4 @@ graph LR
     *   **Storage scope**: Per navigation stack — each `TrapezioNavigationHost` owns its own `TrapezioNavigator` with an independent keyed result dictionary.
     *   **Lifecycle**: Results persist in the navigator until consumed or explicitly cleared. `consumeResult` is single-consumption (removes the entry on read; a second call returns `nil`). `consumeResult(forKey:as:)` restores the entry on type mismatch so a subsequent call with the correct type still succeeds. `dismissToRoot()` calls `clearResults()` automatically; `dismiss()` and `dismissTo(_:)` do not. Unconsumed results are never cleared by a timeout — callers must consume or clear them.
     *   **Thread safety**: `TrapezioNavigator` is `@MainActor`-isolated, so `popWithResult` (store + dismiss) and `consumeResult` are serialized on the main thread with no additional locking needed.
-*   **`TrapezioInterop`**: Protocol for feature-to-app-shell communication (`send(_ event:)`). Use `ClosureTrapezioInterop` for closure-based handling.
+*   **`TrapezioInterop`**: `@MainActor` protocol for feature-to-app-shell communication (`send(_ event:)`), matching `TrapezioNavigator`'s isolation. Use `ClosureTrapezioInterop` for closure-based handling.

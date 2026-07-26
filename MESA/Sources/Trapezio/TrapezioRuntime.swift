@@ -18,6 +18,9 @@ import SwiftUI
 
 /// Binds a store to its UI and drives ``TrapezioLifecycle`` from the hosting view.
 ///
+/// The store needs no property wrapper: `@Observable` registers a dependency on whichever
+/// fields of `state` the UI actually reads during `body`.
+///
 /// Generic parameters are suffixed `Type` so that `State` unambiguously means `SwiftUI.State`
 /// inside this declaration.
 @MainActor
@@ -26,7 +29,7 @@ where ScreenType: TrapezioScreen, StateType: TrapezioState, EventType: TrapezioE
       Store: TrapezioStore<ScreenType, StateType, EventType>, UI: TrapezioUI,
       UI.State == StateType, UI.Event == EventType {
 
-    @ObservedObject var presenter: Store
+    private let presenter: Store
     private let ui: UI
 
     /// Whether `onFirstAppear` has already been delivered for this view identity.

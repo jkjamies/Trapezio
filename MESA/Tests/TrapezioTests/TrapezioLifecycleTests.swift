@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import Combine
 import Foundation
+import Observation
 import Testing
 import os
 @testable import Trapezio
@@ -29,10 +29,10 @@ actor ValueBox<T: Sendable> {
     func set(_ newValue: T) { stored = newValue }
 }
 
-/// Tallies `objectWillChange` emissions without a captured `var`.
+/// Tallies observation callbacks without a captured `var`.
 ///
-/// Deliberately not `@MainActor`: Combine delivers to a non-isolated closure, so a main-actor
-/// call from inside `sink` would not compile under strict concurrency.
+/// Deliberately not `@MainActor`: `withObservationTracking` invokes `onChange` from a
+/// `@Sendable` closure, so a main-actor call from inside it would not compile.
 final class ChangeCounter: @unchecked Sendable {
     private let counter = OSAllocatedUnfairLock<Int>(initialState: 0)
     var value: Int { counter.withLock { $0 } }
@@ -201,27 +201,34 @@ struct TrapezioStoreWorkTests {
 @Suite("TrapezioStore update publishing")
 struct TrapezioStoreUpdatePublishingTests {
 
-    @Test("update publishes once when state changes")
-    @MainActor func publishesOnChange() {
+    @Test("update notifies observers when state changes")
+    @MainActor func notifiesOnChange() {
         let store = FakeStore(screen: FakeScreen(), initialState: FakeState(count: 0))
         let counter = ChangeCounter()
 
-        let subscription = store.objectWillChange.sink { _ in counter.increment() }
-        defer { subscription.cancel() }
+        withObservationTracking {
+            _ = store.state
+        } onChange: {
+            counter.increment()
+        }
 
         store.update { $0.count = 1 }
 
         #expect(counter.value == 1)
     }
 
-    @Test("update does not publish when state is unchanged")
-    @MainActor func skipsPublishWhenEqual() {
+    @Test("update does not notify observers when state is unchanged")
+    @MainActor func skipsNotifyWhenEqual() {
         let store = FakeStore(screen: FakeScreen(), initialState: FakeState(count: 1))
         let counter = ChangeCounter()
 
-        let subscription = store.objectWillChange.sink { _ in counter.increment() }
-        defer { subscription.cancel() }
+        withObservationTracking {
+            _ = store.state
+        } onChange: {
+            counter.increment()
+        }
 
+        // Assigning an equal value would still notify, so `update` must skip the write.
         store.update { $0.count = 1 }
         store.update { _ in }
 

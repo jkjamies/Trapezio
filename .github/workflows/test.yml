@@ -35,7 +35,7 @@ jobs:
       matrix:
         # `swift test` only ever compiles for macOS, so the declared iOS minimum was never
         # verified by CI. Build each library against it explicitly.
-        deployment_target: [ "16.0" ]
+        deployment_target: [ "17.0" ]
         scheme: [ Trapezio, TrapezioNavigation, Strata, TrapezioTest ]
     steps:
       - uses: actions/checkout@v4
