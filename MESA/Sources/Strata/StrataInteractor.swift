@@ -65,14 +65,17 @@ open class StrataInteractor<P: Sendable, T: Sendable>: @unchecked Sendable {
     // MARK: - Initialization
 
     public init() {
-        var captured: AsyncStream<Bool>.Continuation!
-        // The build closure is non-escaping and runs synchronously, so `captured` is set
+        var builder: AsyncStream<Bool>.Continuation!
+        // The build closure is non-escaping and runs synchronously, so `builder` is set
         // before the initializer returns.
         inProgressStream = AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
-            captured = continuation
+            builder = continuation
         }
-        progress.withLock { $0.continuation = captured }
-        captured.yield(false)
+        // Bind to a `let` before touching the lock: `withLock` takes a `@Sendable` closure, and
+        // Swift 6 rejects capturing a mutable local in one.
+        let continuation = builder!
+        progress.withLock { $0.continuation = continuation }
+        continuation.yield(false)
     }
 
     deinit {
