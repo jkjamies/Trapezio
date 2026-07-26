@@ -19,6 +19,12 @@
 
 import PackageDescription
 
+/// Pinned explicitly rather than inherited from the tools version, so a toolchain upgrade
+/// cannot silently relax strict concurrency checking for this package.
+let strictSwift6: [SwiftSetting] = [
+    .swiftLanguageMode(.v6)
+]
+
 let package = Package(
     name: "MESA",
     platforms: [
@@ -48,18 +54,21 @@ let package = Package(
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "Trapezio"
+            name: "Trapezio",
+            swiftSettings: strictSwift6
         ),
         .target(
             name: "TrapezioNavigation",
-            dependencies: ["Trapezio"]
+            dependencies: ["Trapezio"],
+            swiftSettings: strictSwift6
         ),
         .testTarget(
             name: "TrapezioTests",
             dependencies: ["Trapezio"]
         ),
         .target(
-            name: "Strata"
+            name: "Strata",
+            swiftSettings: strictSwift6
         ),
         .testTarget(
             name: "TrapezioNavigationTests",
@@ -71,7 +80,8 @@ let package = Package(
         ),
         .target(
             name: "TrapezioTest",
-            dependencies: ["Trapezio", "TrapezioNavigation"]
+            dependencies: ["Trapezio", "TrapezioNavigation"],
+            swiftSettings: strictSwift6
         ),
         .testTarget(
             name: "TrapezioTestTests",

@@ -39,6 +39,8 @@ stays in place for it.
 | S4-5, S4-6 · SwiftData template | Fixed — protection class set, in-memory fallback |
 | S4-7 · no `SECURITY.md` | Fixed |
 | S4-8 · no DI story | **Open** — pairs with the deep-link registry |
+| S4-9 · no SwiftUI-layer tests | Fixed for the testable part — see note |
+| S4-12 · repo furniture | Fixed — CHANGELOG, CONTRIBUTING, pinned language mode, sync script + hook |
 | S4-9 … S4-12, sample polish | Fixed except SwiftUI-layer view tests |
 | S3-9 · skills generate against the old API | Fixed — all nine updated (missed in the original pass) |
 
@@ -65,8 +67,21 @@ say to update them in the same change as any library API change.
 Also fixed here: `AGENTS.md` did not exist. It is now the canonical instructions file, with the
 four tool-specific files as byte-identical copies and the CI sync job comparing against it.
 
+**S4-9, partially.** The SwiftUI layer cannot be exercised without a hosted view, but the logic
+worth protecting can. `TrapezioStoreBox` — the resolve-once guarantee that replaced
+`@StateObject`'s autoclosure and is all that stands between an adopter and a rebuilt dependency
+graph per render — is now `internal` and directly tested. So are `TrapezioAnyScreen`'s identity
+semantics and `TrapezioLifecycle`'s defaults. What remains untested is SwiftUI's *retention* of
+the box across view updates, which genuinely needs a host.
+
+**S4-12.** `CHANGELOG.md`, `CONTRIBUTING.md`, `scripts/sync-agent-docs.sh` with a
+`.githooks/pre-commit` hook (CI runs the same script, so local and CI cannot disagree), and
+`swiftLanguageMode(.v6)` pinned per target rather than inherited from the tools version. Platform
+support was **not** widened to watchOS/tvOS/visionOS — that would advertise support nothing
+verifies.
+
 Still open: S2-7 + S4-8 (deep links and the factory registry — one piece of work, deferred by
-request) and view-level tests for `TrapezioContainer` / `TrapezioNavigationHost`.
+request), and host-level tests for `TrapezioContainer` / `TrapezioNavigationHost`.
 
 > **Nothing on this branch has been compiled.** The review environment has no Swift toolchain, so
 > CI is the first real build. Highest-risk items, in order: the `@Observable` migration (macro

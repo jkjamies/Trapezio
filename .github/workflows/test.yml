@@ -72,14 +72,5 @@ jobs:
         with:
           persist-credentials: false
       - name: Verify mirrors match AGENTS.md
-        run: |
-          # AGENTS.md is canonical; the rest are copies. Five hand-maintained near-duplicates
-          # is how they drifted apart in the first place.
-          status=0
-          for mirror in CLAUDE.md GEMINI.md .junie/guidelines.md .github/copilot-instructions.md; do
-            if ! cmp -s AGENTS.md "$mirror"; then
-              echo "::error file=$mirror::$mirror differs from AGENTS.md — run: cp AGENTS.md $mirror"
-              status=1
-            fi
-          done
-          exit $status
+        # Same script the pre-commit hook runs, so local and CI cannot disagree.
+        run: scripts/sync-agent-docs.sh --check
