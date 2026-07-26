@@ -98,7 +98,7 @@ flowchart LR
 
 ## 🛠 Tech Stack
 *   **Language**: Swift 5.9+ (Swift 6 Ready).
-*   **UI**: SwiftUI (Declarative) with `@Observable` (iOS 17+ / macOS 14+).
+*   **UI**: SwiftUI (Declarative) with `@Observable` (iOS 17+ / macOS 14+). Observation is per-property: the runtime reads the whole `state` property, so any state change invalidates the view.
 *   **Architecture**: Trapezio (MVI/UDF), Strata (Clean Arch).
 *   **Persistence**: SwiftData / CoreData (wrapped in Actors).
 *   **Concurrency**: Swift Async/Await, Actors, `AsyncStream`. **No Combine** (legacy only).

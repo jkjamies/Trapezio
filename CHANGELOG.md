@@ -12,7 +12,9 @@ changes ship in minor releases.
   Observation framework.
 - **`TrapezioStore` is `@Observable`, not `ObservableObject`.** Drop `@StateObject` /
   `@ObservedObject` on stores; `TrapezioContainer` owns them. `objectWillChange` no longer exists —
-  use `withObservationTracking`. `TrapezioMessageManager` changed the same way.
+  use `withObservationTracking`. `TrapezioMessageManager` changed the same way. Note this does not
+  change invalidation granularity: the runtime reads the whole `state` property, so any state
+  change still invalidates the view.
 - **`TrapezioStore.state` is fully `@MainActor`-isolated.** `nonisolated(unsafe)` is gone. Detached
   work takes a snapshot via `launch(snapshot:work:reduce:)`.
 - **`StrataException` refines `LocalizedError`.** Existing conformers need no changes.

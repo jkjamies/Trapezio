@@ -64,7 +64,8 @@ let package = Package(
         ),
         .testTarget(
             name: "TrapezioTests",
-            dependencies: ["Trapezio"]
+            dependencies: ["Trapezio"],
+            swiftSettings: strictSwift6
         ),
         .target(
             name: "Strata",
@@ -72,11 +73,13 @@ let package = Package(
         ),
         .testTarget(
             name: "TrapezioNavigationTests",
-            dependencies: ["TrapezioNavigation"]
+            dependencies: ["TrapezioNavigation"],
+            swiftSettings: strictSwift6
         ),
         .testTarget(
             name: "StrataTests",
-            dependencies: ["Strata"]
+            dependencies: ["Strata"],
+            swiftSettings: strictSwift6
         ),
         .target(
             name: "TrapezioTest",
@@ -85,7 +88,8 @@ let package = Package(
         ),
         .testTarget(
             name: "TrapezioTestTests",
-            dependencies: ["TrapezioTest"]
+            dependencies: ["TrapezioTest"],
+            swiftSettings: strictSwift6
         ),
     ]
 )

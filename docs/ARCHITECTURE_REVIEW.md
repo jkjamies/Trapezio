@@ -51,9 +51,14 @@ instead of calling `fatalError`).
 
 Also in 0.3.0, beyond the review: the deployment floor moved to iOS 17 / macOS 14 and the
 observation layer moved to `@Observable`. That was listed in the review only as a note under
-S3-8; it landed as a deliberate release decision. It removes the manual `objectWillChange.send()`
-and gives property-granular invalidation, and it makes reading `state` off the main actor a
+S3-8; it landed as a deliberate release decision. It removes the manual `objectWillChange.send()`,
+removes the property wrapper from the runtime, and makes reading `state` off the main actor a
 compile error rather than a documented rule.
+
+It does **not** buy finer invalidation, and an earlier revision of the README claimed it did.
+`TrapezioRuntime` reads `store.state` — one tracked property holding the whole `State` struct — so
+any state change invalidates the view, exactly as before. Observation is per-property, and a UDF
+store has one state property by design.
 
 **S3-9, missed in the original pass.** The review covered `MESA/`, `Counter/`, CI, and the four
 instruction files, but never opened `.claude/skills/`. Those nine skills are what actually
