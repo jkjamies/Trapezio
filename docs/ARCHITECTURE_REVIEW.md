@@ -39,9 +39,10 @@ stays in place for it.
 | S4-5, S4-6 · SwiftData template | Fixed — protection class set, in-memory fallback |
 | S4-7 · no `SECURITY.md` | Fixed |
 | S4-8 · no DI story | **Open** — pairs with the deep-link registry |
-| S4-9 · no SwiftUI-layer tests | Fixed for the testable part — see note |
+| S4-9 · no SwiftUI-layer tests | Partly fixed — the testable logic is covered; host-level tests still open |
+| S4-10, S4-11 · weak test assertions | Fixed |
 | S4-12 · repo furniture | Fixed — CHANGELOG, CONTRIBUTING, pinned language mode, sync script + hook |
-| S4-9 … S4-12, sample polish | Fixed except SwiftUI-layer view tests |
+| Sample-app polish | Fixed |
 | S3-9 · skills generate against the old API | Fixed — all nine updated (missed in the original pass) |
 
 Closed after the first pass, in **0.3.0**: S2-11 (`TrapezioInterop` is now `@MainActor`),
