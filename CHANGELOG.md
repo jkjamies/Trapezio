@@ -34,6 +34,11 @@ See [Migrating to 0.3.0](Readme.md#-migrating-to-030) for the full upgrade path.
   `.githooks/pre-commit` hook keeping the four mirrors honest.
 - `SECURITY.md`, this changelog, and `CONTRIBUTING.md`.
 - CI builds every library against the declared iOS minimum, and attaches XCFrameworks on release.
+- Hosted tests (`UIHostingController` in a real window) proving SwiftUI retains the container's
+  store across re-renders, and that `onFirstAppear` fires once per view identity.
+- End-to-end UI tests covering navigation, messages, persistence, and the detached-work round
+  trip. The UI test target previously contained only Xcode's generated stub.
+- Accessibility identifiers on the counter's Help, Error, message, and dismiss controls.
 
 ### Fixed
 

@@ -44,10 +44,12 @@ struct CounterUI: TrapezioUI {
             HStack {
                 Button("Help") { onEvent(.requestHelp) }
                     .buttonStyle(.borderless)
-                
+                    .accessibilityIdentifier("helpButton")
+
                 Button("Error") { onEvent(.throwError) }
                     .buttonStyle(.borderless)
                     .foregroundColor(.red)
+                    .accessibilityIdentifier("errorButton")
             }
             
             Divider().padding(.horizontal)
@@ -67,9 +69,11 @@ struct CounterUI: TrapezioUI {
                         .padding()
                         .background(Color.red.opacity(0.1))
                         .cornerRadius(8)
+                        .accessibilityIdentifier("messageLabel")
                     Button("Dismiss") {
                         onEvent(.clearError(id: msg.id))
                     }
+                    .accessibilityIdentifier("dismissMessageButton")
                 }
                 .padding()
                 .background(Color(.systemBackground))

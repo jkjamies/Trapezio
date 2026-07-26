@@ -39,7 +39,7 @@ stays in place for it.
 | S4-5, S4-6 · SwiftData template | Fixed — protection class set, in-memory fallback |
 | S4-7 · no `SECURITY.md` | Fixed |
 | S4-8 · no DI story | **Open** — pairs with the deep-link registry |
-| S4-9 · no SwiftUI-layer tests | Partly fixed — the testable logic is covered; host-level tests still open |
+| S4-9 · no SwiftUI-layer tests | Fixed — unit, hosted, and end-to-end |
 | S4-10, S4-11 · weak test assertions | Fixed |
 | S4-12 · repo furniture | Fixed — CHANGELOG, CONTRIBUTING, pinned language mode, sync script + hook |
 | Sample-app polish | Fixed |
@@ -68,12 +68,29 @@ say to update them in the same change as any library API change.
 Also fixed here: `AGENTS.md` did not exist. It is now the canonical instructions file, with the
 four tool-specific files as byte-identical copies and the CI sync job comparing against it.
 
-**S4-9, partially.** The SwiftUI layer cannot be exercised without a hosted view, but the logic
-worth protecting can. `TrapezioStoreBox` — the resolve-once guarantee that replaced
-`@StateObject`'s autoclosure and is all that stands between an adopter and a rebuilt dependency
-graph per render — is now `internal` and directly tested. So are `TrapezioAnyScreen`'s identity
-semantics and `TrapezioLifecycle`'s defaults. What remains untested is SwiftUI's *retention* of
-the box across view updates, which genuinely needs a host.
+**S4-9.** Covered at three levels.
+
+*Unit* (`MESA/Tests`): `TrapezioStoreBox` is `internal` and directly tested for resolve-once —
+it is the guarantee that replaced `@StateObject`'s autoclosure and the only thing standing
+between an adopter and a rebuilt dependency graph per render. Plus `TrapezioAnyScreen`'s identity
+semantics and `TrapezioLifecycle`'s defaults.
+
+*Hosted* (`CounterTests/TrapezioHostTests`): a `UIHostingController` in a real `UIWindow`, with an
+`@Observable` ticker forcing parent re-renders. This is what proves SwiftUI actually **retains**
+the box — the unit test only proves the box would behave if retained. Also asserts state survives
+a parent re-render and that `onFirstAppear` fires exactly once per view identity, measured by the
+store's task-bag count rather than a flag, so a re-fire shows up as the extra observation task it
+would really be.
+
+*End-to-end* (`CounterUITests`): the target previously held only Xcode's stub, which asserted
+nothing. Now covers the counter round trip through `launch(snapshot:)`, the message queue bound in
+`onFirstAppear`, push/pop preserving store state, one Back returning to the counter after repeated
+taps on the navigation button, and the full Strata path — store to interactor to `ModelActor`
+repository and back through the observation stream.
+
+An earlier revision of this document said host-level testing "genuinely needs a host" and left it
+there. The repository has a host app and an idle UI-test target; that was an excuse, not a
+constraint.
 
 **S4-12.** `CHANGELOG.md`, `CONTRIBUTING.md`, `scripts/sync-agent-docs.sh` with a
 `.githooks/pre-commit` hook (CI runs the same script, so local and CI cannot disagree), and
@@ -81,15 +98,16 @@ the box across view updates, which genuinely needs a host.
 support was **not** widened to watchOS/tvOS/visionOS — that would advertise support nothing
 verifies.
 
-Still open: S2-7 + S4-8 (deep links and the factory registry — one piece of work, deferred by
-request), and host-level tests for `TrapezioContainer` / `TrapezioNavigationHost`.
+Still open: S2-7 + S4-8 — deep links and the factory registry, one piece of work, deferred by
+request.
 
 > **Nothing on this branch has been compiled.** The review environment has no Swift toolchain, so
 > CI is the first real build. Highest-risk items, in order: the `@Observable` migration (macro
 > behaviour on a generic `open` class, and `TrapezioContainer`'s lazy store box replacing
 > `@StateObject`'s autoclosure), the XCFramework job in `publish-release.yml` (unverifiable
-> `xcodebuild` archive paths), and the strict-concurrency annotations on the task bag and
-> registries.
+> `xcodebuild` archive paths), the strict-concurrency annotations on the task bag and registries,
+> and the hosted/UI tests — those depend on window setup and runloop timing, so if anything is
+> flaky rather than wrong, start with `TrapezioHostTests.settle()`.
 
 ---
 
