@@ -18,14 +18,20 @@ import Foundation
 
 // MARK: - StrataException
 
-/// Base error type for all Strata business logic failures
-public protocol StrataException: Error, Sendable {
+/// Base error type for all Strata business logic failures.
+///
+/// Refines `LocalizedError` rather than plain `Error` on purpose. Foundation supplies a
+/// `localizedDescription` on every `Error`, and which implementation you get is resolved
+/// *statically* — so a protocol extension defining `localizedDescription` here would be
+/// silently bypassed the moment a value is typed as `any Error` (for example when passed to
+/// `TrapezioMessage(_:)`), yielding "The operation couldn't be completed…" instead of
+/// ``message``. `LocalizedError.errorDescription` is consulted through the `Error` path, so
+/// conforming here makes ``message`` authoritative everywhere.
+public protocol StrataException: LocalizedError, Sendable {
     var message: String { get }
 }
 
-/// Default implementation for StrataException
 extension StrataException {
-    public var localizedDescription: String {
-        return message
-    }
+    /// Bridges ``message`` into Foundation's error-description machinery.
+    public var errorDescription: String? { message }
 }

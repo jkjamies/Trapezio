@@ -20,6 +20,27 @@ import SwiftUI
 ///
 /// Use this whenever you render a store in SwiftUI so the store isn't recreated
 /// during view updates (e.g. when navigating or when parent views re-render).
+///
+/// - Important: `makeStore` is an `@autoclosure`, so store construction is deferred to
+///   `@StateObject` and happens once. **Anything the store depends on must be built inside
+///   that autoclosure too.** Dependencies constructed in the surrounding factory body run on
+///   every view evaluation and are then discarded, which is expensive for repositories,
+///   database contexts, and network clients:
+///
+///   ```swift
+///   // Wrong — a new repository (and ModelContext) per render.
+///   let repo = SummaryRepositoryImpl(container: container)
+///   return TrapezioContainer(makeStore: SummaryStore(repo: repo), ui: SummaryUI())
+///
+///   // Right — the whole graph is built once, inside the autoclosure.
+///   return TrapezioContainer(
+///       makeStore: {
+///           let repo = SummaryRepositoryImpl(container: container)
+///           return SummaryStore(repo: repo)
+///       }(),
+///       ui: SummaryUI()
+///   )
+///   ```
 public struct TrapezioContainer<Store: ObservableObject, Content: View>: View {
 
     @StateObject private var store: Store
@@ -40,11 +61,17 @@ public struct TrapezioContainer<Store: ObservableObject, Content: View>: View {
 
 public extension TrapezioContainer {
     /// Convenience initializer for the common Trapezio pattern: `TrapezioStore + TrapezioUI`.
-    init<S: TrapezioScreen, State: TrapezioState, Event: TrapezioEvent, UI: TrapezioUI>(
-        makeStore: @escaping @autoclosure () -> TrapezioStore<S, State, Event>,
+    ///
+    /// The concrete store type is preserved, so `content` and callers keep access to
+    /// subclass-specific API rather than seeing the erased `TrapezioStore` base class.
+    init<S: TrapezioScreen, AState: TrapezioState, AEvent: TrapezioEvent, UI: TrapezioUI>(
+        makeStore: @escaping @autoclosure () -> Store,
         ui: UI
-    ) where Store == TrapezioStore<S, State, Event>, Content == AnyView, UI.State == State, UI.Event == Event {
-        _store = SwiftUI.StateObject(wrappedValue: makeStore())
+    ) where Store: TrapezioStore<S, AState, AEvent>,
+            UI.State == AState,
+            UI.Event == AEvent,
+            Content == AnyView {
+        _store = StateObject(wrappedValue: makeStore())
         self.content = { store in
             AnyView(store.render(with: ui))
         }

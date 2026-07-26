@@ -105,6 +105,15 @@ internal final class TrapezioStackNavigator: ObservableObject, TrapezioNavigator
     }
 
     internal func goTo(_ screen: any TrapezioScreen) {
+        // Guard against the double-tap duplicate push. `TrapezioAnyScreen` deliberately hashes
+        // on a per-entry UUID so the same route can legitimately appear at several depths, which
+        // means the path itself cannot dedupe. Comparing against the top of the stack is enough:
+        // two taps land back-to-back, while a genuine re-entry to the same route always has a
+        // different screen in between.
+        if let top = path.last, AnyHashable(top.base) == AnyHashable(screen) {
+            logger.debug("goTo ignored — screen is already on top of the stack.")
+            return
+        }
         path.append(TrapezioAnyScreen(screen))
     }
 
