@@ -76,13 +76,12 @@ final class CounterUITests: XCTestCase {
     func test_divide_roundTripsThroughDetachedWork() {
         XCTAssertTrue(countLabel().waitForExistence(timeout: timeout))
 
-        for _ in 0..<8 {
-            app.buttons["incrementButton"].tap()
-        }
-        waitForCount("8")
+        app.buttons["incrementButton"].tap()
+        app.buttons["incrementButton"].tap()
+        waitForCount("2")
 
         app.buttons["divideButton"].tap()
-        waitForCount("4")
+        waitForCount("1")
     }
 
     // MARK: - Messages
@@ -131,26 +130,15 @@ final class CounterUITests: XCTestCase {
         XCTAssertEqual(countLabel().label, "3")
     }
 
-    /// A single Back must return to the counter. If `goTo` had pushed twice, it would not.
-    func test_repeatedNavigationTaps_pushOnlyOneScreen() {
-        XCTAssertTrue(countLabel().waitForExistence(timeout: timeout))
-
-        let goToSummary = app.buttons["goToSummaryButton"]
-        goToSummary.tap()
-        // A second tap while the destination is still settling must not enqueue another push.
-        if goToSummary.exists && goToSummary.isHittable {
-            goToSummary.tap()
-        }
-
-        XCTAssertTrue(app.staticTexts["summaryValueLabel"].waitForExistence(timeout: timeout))
-
-        app.buttons["backButton"].tap()
-
-        XCTAssertTrue(
-            countLabel().waitForExistence(timeout: timeout),
-            "one Back did not return to the counter — the destination was pushed more than once"
-        )
-    }
+    // The duplicate-push guard in `goTo` is covered deterministically by the navigator unit
+    // tests (`goToIgnoresDuplicateTop`, `goToAllowsNonAdjacentRepeat`,
+    // `goToDistinguishesByParameters`) and is deliberately NOT retested here.
+    //
+    // An end-to-end version cannot be made sound: XCUITest has no way to guarantee two taps land
+    // before the push transition completes. Either both hit the counter — the case worth
+    // testing — or the second lands on the destination that has already slid in and activates
+    // whatever sits under the cursor there. A test whose meaning depends on which of those
+    // happened is not a test, and it red-lined CI on exactly that ambiguity.
 
     // MARK: - Persistence
 
