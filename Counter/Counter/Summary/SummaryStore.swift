@@ -19,9 +19,8 @@ import Trapezio
 import TrapezioNavigation
 import Strata
 
-
 @MainActor
-final class SummaryStore: TrapezioStore<SummaryScreen, SummaryState, SummaryEvent> {
+final class SummaryStore: TrapezioStore<SummaryScreen, SummaryState, SummaryEvent>, TrapezioLifecycle {
     private let navigator: (any TrapezioNavigator)?
     private let saveUseCase: SaveLastValueUseCase
     private let observeUseCase: ObserveLastValueUseCase
@@ -33,35 +32,35 @@ final class SummaryStore: TrapezioStore<SummaryScreen, SummaryState, SummaryEven
         self.navigator = navigator
         self.saveUseCase = saveUseCase
         self.observeUseCase = observeUseCase
-        
+
         super.init(screen: screen, initialState: SummaryState(value: screen.value))
-        
-        // Start observing
-        self.setupBindings()
     }
-    
-    private func setupBindings() {
-        // Observe last saved value
-        let stream = observeUseCase.createObservable(params: ())
-        strataCollect(stream) { [weak self] val in
-            self?.update { $0.lastSavedValue = val }
+
+    // MARK: - TrapezioLifecycle
+
+    func onFirstAppear() {
+        // Subscribe before triggering — `stream` broadcasts live emissions and does not replay.
+        collect(observeUseCase.stream) { [weak self] value in
+            self?.update { $0.lastSavedValue = value }
         }
-        
-        // Observe save usecase inProgress state (Trapeze pattern)
-        strataCollect(saveUseCase.inProgressStream) { [weak self] isLoading in
+        collect(saveUseCase.inProgressStream) { [weak self] isLoading in
             self?.update { $0.isLoading = isLoading }
         }
+        observeUseCase(())
     }
+
+    // MARK: - Events
 
     override func handle(event: SummaryEvent) {
         switch event {
         case .printValue:
             print("Trapezio Counter Value: \(state.value)")
         case .save:
-            strataLaunch(
-                work: { await self.saveUseCase.execute(params: self.state.value) },
-                reduce: { result in
-                    self.update {
+            launch(
+                snapshot: { $0.value },
+                work: { [saveUseCase] value in await saveUseCase.execute(params: value) },
+                reduce: { [weak self] result in
+                    self?.update {
                         $0.saveMessage = result.fold(
                             onSuccess: { _ in "Value saved successfully." },
                             onFailure: { error in "Failed to save: \(error.message)" }

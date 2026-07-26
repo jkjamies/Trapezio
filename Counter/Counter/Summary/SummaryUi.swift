@@ -27,9 +27,6 @@ struct SummaryUI: TrapezioUI {
                 .font(.system(size: 60, weight: .bold, design: .monospaced))
                 .accessibilityIdentifier("summaryValueLabel")
 
-            HStack(spacing: 16) {
-            }
-            
             if let saved = state.lastSavedValue {
                 Text("Last Saved: \(saved)")
                     .font(.headline)

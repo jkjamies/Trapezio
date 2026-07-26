@@ -15,16 +15,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Read version
         id: version
-        run: echo "version=$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
 
       - name: Delete existing draft for this version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Passed through the environment rather than interpolated into the script body, so
+          # the file's contents can never be parsed as shell.
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          EXISTING=$(gh release list --json tagName,isDraft -q 'first(.[] | select(.tagName == "${{ steps.version.outputs.version }}" and .isDraft) | .tagName) // empty')
+          EXISTING=$(gh release list --json tagName,isDraft \
+            -q "first(.[] | select(.tagName == \"$VERSION\" and .isDraft) | .tagName) // empty")
           if [ -n "$EXISTING" ]; then
             gh release delete "$EXISTING" --yes
           fi
@@ -32,8 +37,9 @@ jobs:
       - name: Create draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "${{ steps.version.outputs.version }}" \
+          gh release create "$VERSION" \
             --draft \
             --generate-notes \
-            --title "v${{ steps.version.outputs.version }}"
+            --title "v$VERSION"

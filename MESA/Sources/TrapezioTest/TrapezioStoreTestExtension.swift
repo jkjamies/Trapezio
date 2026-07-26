@@ -39,19 +39,35 @@ public extension TrapezioStore {
 
     /// Waits for state to settle after async work, then validates.
     ///
+    /// `validate` runs whether or not the predicate was satisfied, so an assertion inside it
+    /// still reports the state that was actually reached. Check the return value to distinguish
+    /// "the condition held" from "we gave up waiting" — otherwise a timeout surfaces as a
+    /// confusing assertion failure rather than as a timeout.
+    ///
+    /// ```swift
+    /// let settled = await store.awaitState(until: { $0.items.isEmpty == false }) { state in
+    ///     #expect(state.items.count == 3)
+    /// }
+    /// #expect(settled, "store never finished loading")
+    /// ```
+    ///
     /// - Parameters:
-    ///   - timeout: Maximum time to wait for state to change.
+    ///   - timeout: Maximum time to wait for the predicate to hold.
     ///   - predicate: Condition to wait for before asserting.
     ///   - validate: Assertion block receiving the settled state.
+    /// - Returns: `true` if `predicate` held before the deadline, `false` if it timed out.
+    @discardableResult
     func awaitState(
         timeout: TimeInterval = 2.0,
         until predicate: @escaping (State) -> Bool,
         validate: @escaping (State) -> Void
-    ) async {
+    ) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while !predicate(state) && Date() < deadline {
             try? await Task.sleep(for: .milliseconds(50))
         }
+        let satisfied = predicate(state)
         validate(state)
+        return satisfied
     }
 }

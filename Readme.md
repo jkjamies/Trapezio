@@ -53,7 +53,9 @@ flowchart LR
 | iOS | 16.0 |
 | macOS | 13.0 |
 
-Trapezio currently uses `ObservableObject` to support iOS 16+. When iOS 17 becomes the minimum deployment target, the observation layer will migrate to `@Observable` for fine-grained tracking, and the `nonisolated(unsafe)` + manual `objectWillChange.send()` pattern on `TrapezioStore.state` will be replaced by the `@Observable` macro.
+Trapezio currently uses `ObservableObject` to support iOS 16+. When iOS 17 becomes the minimum deployment target, the observation layer will migrate to `@Observable` for fine-grained tracking, replacing the manual `objectWillChange.send()` + whole-state `Equatable` diff in `TrapezioStore.update(_:)`.
+
+> The sample app targets iOS 17 because it uses SwiftData. The libraries themselves build against iOS 16.
 
 ---
 
@@ -65,7 +67,7 @@ Add MESA-iOS to your project via SPM:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/jkjamies/MESA-iOS.git", from: "0.1.0")
+    .package(url: "https://github.com/jkjamies/MESA-iOS.git", from: "0.2.0")
 ]
 ```
 
@@ -86,7 +88,7 @@ Then add the libraries you need to your target:
 
 ### XCFramework
 
-Pre-built XCFrameworks for each library are attached to every [GitHub Release](https://github.com/jkjamies/MESA-iOS/releases):
+Pre-built XCFrameworks for each library are attached to every [GitHub Release](https://github.com/jkjamies/MESA-iOS/releases) from **v0.3.0** onward:
 
 | Artifact | Contents |
 |:---|:---|
@@ -226,7 +228,7 @@ struct CounterUI: TrapezioUI {
 `TrapezioContainer` preserves store identity across SwiftUI view updates. Factories assemble the dependency graph.
 ```swift
 struct CounterFactory {
-    @ViewBuilder @MainActor
+    @MainActor
     static func make(screen: CounterScreen, navigator: (any TrapezioNavigator)?, interop: (any TrapezioInterop)?) -> some View {
         TrapezioContainer(
             makeStore: CounterStore(screen: screen, divideUsecase: DivideUsecase(), navigator: navigator, interop: interop),
@@ -235,6 +237,23 @@ struct CounterFactory {
     }
 }
 ```
+
+> **`makeStore` is an `@autoclosure`.** Store construction is deferred to `@StateObject` and happens once — but only for what is written *inside* it. Dependencies built in the surrounding factory body run on every view evaluation and are then discarded, which is expensive for repositories, database contexts, and network clients:
+>
+> ```swift
+> // Wrong — a new repository (and ModelContext) per render.
+> let repo = SummaryRepositoryImpl(container: container)
+> return TrapezioContainer(makeStore: SummaryStore(repo: repo), ui: SummaryUI())
+>
+> // Right — the whole graph is built once, inside the autoclosure.
+> return TrapezioContainer(
+>     makeStore: {
+>         let repo = SummaryRepositoryImpl(container: container)
+>         return SummaryStore(repo: repo)
+>     }(),
+>     ui: SummaryUI()
+> )
+> ```
 
 ### Key Protocols
 
@@ -248,9 +267,54 @@ struct CounterFactory {
 ### TrapezioStore Internals
 
 - `@MainActor open class TrapezioStore<S, State, Event>: ObservableObject`
-- `state` is `nonisolated(unsafe) public private(set)` — enables cross-isolation reads from detached tasks while writes are restricted to `update()` on the main actor; `update()` calls `objectWillChange.send()` manually
-- `update(_ transform:)` — copy-on-write mutation with `Equatable` check to prevent unnecessary SwiftUI re-renders
+- `state` is `public private(set)` and fully `@MainActor`-isolated. Detached work cannot read it directly — take a `Sendable` snapshot with `launch(snapshot:work:reduce:)` instead
+- `update(_ transform:)` — copy-on-write mutation with `Equatable` check to prevent unnecessary SwiftUI re-renders; calls `objectWillChange.send()` manually
+- `tasks` — a `TrapezioTaskBag` scoping everything the store started; cancelled on deallocation
 - `render(with: ui)` — binds the store to a `TrapezioUI` and returns a `TrapezioRuntime` view
+
+#### Starting work from a store
+
+Use the store's own methods rather than the free `strata*` functions. They track their task in `tasks`, so work started by a store is cancelled when the store goes away.
+
+| Method | Work thread | Result thread |
+|:---|:---|:---|
+| `launch(work:reduce:)` | Detached | `@MainActor` via `reduce` |
+| `launch(snapshot:work:reduce:)` | Snapshot on `@MainActor`, work detached | `@MainActor` via `reduce` |
+| `launchMain(work:reduce:)` | `@MainActor` | `@MainActor` via `reduce` |
+| `collect(_:action:)` | Detached | `@MainActor` per emission |
+| `cancelAll()` | — | Cancels every tracked task |
+
+```swift
+// Reading state inside detached work is a data race. Snapshot it first.
+launch(
+    snapshot: { $0.count },
+    work: { count in await divideUseCase.execute(value: count) },
+    reduce: { [weak self] result in self?.update { $0.count = result } }
+)
+```
+
+> A task that captures its store **strongly** keeps the store alive, so automatic cancellation never runs. Capture `[weak self]` in long-lived work.
+
+### TrapezioLifecycle
+
+Conform a store to `TrapezioLifecycle` and `TrapezioRuntime` drives it from the hosting view:
+
+| Callback | Fires |
+|:---|:---|
+| `onFirstAppear()` | Once per view identity, before the first `onAppear()`. Start observation here |
+| `onAppear()` | Every appearance, including when revealed by a pop. Consume navigation results here |
+| `onDisappear()` | Every disappearance |
+
+```swift
+final class SummaryStore: TrapezioStore<...>, TrapezioLifecycle {
+    func onFirstAppear() {
+        collect(observeLastValue.stream) { [weak self] value in
+            self?.update { $0.lastSaved = value }
+        }
+        observeLastValue(())
+    }
+}
+```
 
 ### TrapezioMessage
 
@@ -282,13 +346,15 @@ Most primitives use `Task.detached` to guarantee work runs off the main thread. 
 | `strataLaunchInterop(work:reduce:catch:)` | Detached (cooperative pool) | `@MainActor` via `reduce`/`catch` | Routes `CancellationError()` to `catch` | `Task<Void, Never>` |
 | `strataLaunchMain(work:reduce:)` | `@MainActor` | `@MainActor` via `reduce` | Skips `reduce` | `Task<Void, Never>` |
 | `strataCollect(stream, action:)` | Detached (cooperative pool) | `@MainActor` via `action` per emission | — | `Task<Void, Never>` |
-| `strataRunCatching { }` | Inherits caller context | Same | — | `StrataResult<T>` |
+| `strataRunCatching { }` | Inherits caller context | Same | Returns `.failure(StrataCancellationException)` | `StrataResult<T>` |
 
 All return `@discardableResult` — ignore for fire-and-forget, or store the `Task` handle for cancellation.
 
 ### StrataException
 
-`StrataException` is the base error protocol (`Error & Sendable` + `message: String`) for all domain failures. It is the error type carried by `StrataResult.failure`. Implement it on simple structs to define domain-specific errors.
+`StrataException` is the base error protocol (`LocalizedError & Sendable` + `message: String`) for all domain failures. It is the error type carried by `StrataResult.failure`. Implement it on simple structs to define domain-specific errors.
+
+It refines `LocalizedError` rather than plain `Error` deliberately: Foundation supplies a `localizedDescription` on every `Error` and the choice is resolved statically, so a value typed as `any Error` would otherwise show "The operation couldn't be completed…" instead of `message`. Conforming to `LocalizedError` makes `message` authoritative everywhere, including `TrapezioMessage(_:)`.
 
 ### StrataResult Operations
 
@@ -308,21 +374,30 @@ All return `@discardableResult` — ignore for fire-and-forget, or store the `Ta
 
 | Type | Description |
 |:---|:---|
-| `StrataException` | Base error protocol (`Error & Sendable` + `message: String`) for domain failures |
-| `StrataExecutionException` | Wraps unexpected (non-`StrataException`) errors; preserves `underlyingError` |
+| `StrataException` | Base error protocol (`LocalizedError & Sendable` + `message: String`) for domain failures |
+| `StrataExecutionException` | Wraps unexpected (non-`StrataException`) errors; preserves a `Sendable` snapshot as `underlyingErrorType` and `underlyingErrorDescription` |
 | `StrataTimeoutException` | Indicates interactor execution exceeded its `timeout` duration |
+| `StrataCancellationException` | Indicates the operation was cancelled via Swift's cooperative cancellation |
 
-`strataRunCatching` re-throws `CancellationError` rather than wrapping it in `.failure`, allowing Swift's cooperative cancellation to propagate correctly.
+`strataRunCatching` does not throw. `CancellationError` is mapped to `.failure(StrataCancellationException)` so cancellation is represented uniformly inside `StrataResult` alongside every other failure — callers pattern-match one type instead of mixing `try` with result handling.
 
 ### StrataInteractor
 
 `StrataInteractor<P, T>` provides built-in `inProgress` state (thread-safe via `OSAllocatedUnfairLock`) and an `inProgressStream` (`AsyncStream<Bool>`, single-consumer) for binding loading indicators. `executeCatching(params:block:)` bridges throwing code to `StrataResult`.
 
+Concurrent executions are refcounted, so a shared interactor reports `inProgress == true` until the *last* in-flight call finishes. The stream is created once in `init` and finishes when the interactor deallocates.
+
 `execute(params:timeout:)` supports configurable timeout protection (default: 5 minutes). If `doWork` exceeds the timeout, the result is `.failure(StrataTimeoutException)` and the work task is cancelled.
+
+The timeout is a **cancellation signal, not a hard deadline**. `doWork` runs as a child task, so `execute` cannot return until it actually finishes. Implementations that ignore cooperative cancellation — a tight synchronous loop, a blocking C call, a request with no cancellation wiring — will run past the timeout and hold the caller. Check `Task.isCancelled` in long-running work.
 
 ### StrataSubjectInteractor
 
 `StrataSubjectInteractor<P, T>` is triggered via `callAsFunction(_:)` and consumed via the `.stream` property. Re-triggering automatically cancels the previous inner stream. The `value` property caches the latest emission (thread-safe, read-only externally).
+
+`.stream` **broadcasts**: every access opens an independent subscription and all subscriptions receive every emission. Emissions are not replayed, so subscribe before triggering; read `value` for the current cache. Subscriptions end when the consumer stops iterating or when the interactor deallocates.
+
+`createObservable(params:)` is the method you *override*, never the one you call — calling it directly bypasses re-trigger cancellation and the `value` cache.
 
 **Example: Persistence Actor**
 ```swift
@@ -355,7 +430,7 @@ TrapezioNavigationHost(root: CounterScreen(initialValue: 0)) { screen, navigator
 
 | Method | Description |
 |:---|:---|
-| `goTo(_ screen:)` | Push a screen onto the navigation stack |
+| `goTo(_ screen:)` | Push a screen onto the navigation stack. Ignored when that screen is already on top, so a double tap cannot push twice |
 | `dismiss()` | Pop the current screen |
 | `dismissToRoot()` | Pop to the root of the stack |
 | `dismissTo(_ screen:)` | Pop back to a specific screen |
@@ -382,14 +457,15 @@ case .saveTapped:
     navigator?.popWithResult(key: "edit_result", result: EditResult(name: state.name))
 ```
 
-**Consuming a result** — call `consumeResult` in the consuming Store, typically when the screen reappears:
+**Consuming a result** — call `consumeResult` when the screen reappears. Conform the consuming store to `TrapezioLifecycle` and the runtime delivers that moment for you:
 
 ```swift
-// In ListStore.handle(event:)
-case .onAppear:
+// In ListStore
+func onAppear() {
     if let result = navigator?.consumeResult(forKey: "edit_result", as: EditResult.self) {
         update { $0.name = result.name }
     }
+}
 ```
 
 Results are single-consumption — calling `consumeResult` a second time returns `nil`. On type mismatch, `consumeResult(forKey:as:)` preserves the result so a subsequent call with the correct type still succeeds.

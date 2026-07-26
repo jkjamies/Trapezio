@@ -19,16 +19,14 @@ import Trapezio
 import TrapezioNavigation
 
 struct CounterFactory {
-    @ViewBuilder @MainActor
+    @MainActor
     static func make(screen: CounterScreen, navigator: (any TrapezioNavigator)?, interop: (any TrapezioInterop)?) -> some View {
-        // This line is what DI code essentially does:
-        // Look at dependency graph and provide the real impl.
-        let usecase = DivideUsecase()
-        
+        // Composition Root: what a DI container would otherwise resolve. Everything is built
+        // inside the autoclosure so it runs once, not on every view evaluation.
         TrapezioContainer(
             makeStore: CounterStore(
                 screen: screen,
-                divideUsecase: usecase,
+                divideUsecase: DivideUsecase(),
                 navigator: navigator,
                 interop: interop
             ),

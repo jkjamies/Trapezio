@@ -72,7 +72,7 @@ struct CounterUI: TrapezioUI {
                     }
                 }
                 .padding()
-                .background(Color.white)
+                .background(Color(.systemBackground))
                 .cornerRadius(12)
                 .shadow(radius: 5)
                 .padding()

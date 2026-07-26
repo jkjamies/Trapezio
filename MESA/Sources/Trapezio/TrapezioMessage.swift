@@ -79,13 +79,16 @@ public class TrapezioMessageManager: ObservableObject {
     public var messagesSequence: AsyncStream<[TrapezioMessage]> {
         let current = messages
         let registry = subscribers
-        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+        return AsyncStream<[TrapezioMessage]>(bufferingPolicy: .bufferingNewest(1)) { continuation in
             // Emit the initial value immediately.
             continuation.yield(current)
 
             let id = registry.register(continuation)
-            continuation.onTermination = { _ in
-                registry.unregister(id)
+            // Weak: the registry holds the continuation, and the continuation holds this
+            // closure. A strong capture here would be a cycle, keeping the registry — and so
+            // the stream — alive after the manager is gone.
+            continuation.onTermination = { [weak registry] _ in
+                registry?.unregister(id)
             }
         }
     }

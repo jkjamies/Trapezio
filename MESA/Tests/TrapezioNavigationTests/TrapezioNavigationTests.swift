@@ -43,6 +43,37 @@ struct TrapezioStackNavigatorTests {
         #expect(nav.path.count == 3)
     }
 
+    @Test("goTo ignores a screen already on top of the stack")
+    @MainActor func goToIgnoresDuplicateTop() {
+        let nav = TrapezioStackNavigator(root: FakeScreenA(), onInterop: nil)
+
+        nav.goTo(FakeScreenB())
+        nav.goTo(FakeScreenB())
+
+        #expect(nav.path.count == 1)
+    }
+
+    @Test("goTo allows the same screen again from a deeper position")
+    @MainActor func goToAllowsNonAdjacentRepeat() {
+        let nav = TrapezioStackNavigator(root: FakeScreenA(), onInterop: nil)
+
+        nav.goTo(FakeScreenB())
+        nav.goTo(FakeScreenC(id: 1))
+        nav.goTo(FakeScreenB())
+
+        #expect(nav.path.count == 3)
+    }
+
+    @Test("goTo treats screens differing only in parameters as distinct")
+    @MainActor func goToDistinguishesByParameters() {
+        let nav = TrapezioStackNavigator(root: FakeScreenA(), onInterop: nil)
+
+        nav.goTo(FakeScreenC(id: 1))
+        nav.goTo(FakeScreenC(id: 2))
+
+        #expect(nav.path.count == 2)
+    }
+
     @Test("dismiss pops last screen")
     @MainActor func dismiss() {
         let nav = TrapezioStackNavigator(root: FakeScreenA(), onInterop: nil)

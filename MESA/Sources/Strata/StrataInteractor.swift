@@ -68,7 +68,7 @@ open class StrataInteractor<P: Sendable, T: Sendable>: @unchecked Sendable {
         var builder: AsyncStream<Bool>.Continuation!
         // The build closure is non-escaping and runs synchronously, so `builder` is set
         // before the initializer returns.
-        inProgressStream = AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+        inProgressStream = AsyncStream<Bool>(bufferingPolicy: .bufferingNewest(1)) { continuation in
             builder = continuation
         }
         // Bind to a `let` before touching the lock: `withLock` takes a `@Sendable` closure, and
