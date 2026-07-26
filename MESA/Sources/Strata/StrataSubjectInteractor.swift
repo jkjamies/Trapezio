@@ -114,7 +114,7 @@ open class StrataSubjectInteractor<P: Sendable, T: Sendable>: @unchecked Sendabl
     ///   cannot grow memory without bound or stall the others.
     public var stream: AsyncStream<T> {
         let registry = subscribers
-        return AsyncStream(bufferingPolicy: .bufferingNewest(16)) { continuation in
+        return AsyncStream<T>(bufferingPolicy: .bufferingNewest(16)) { continuation in
             let id = registry.register(continuation)
             // Weak: the registry holds the continuation, and the continuation holds this
             // closure. A strong capture here would be a cycle, keeping the registry — and so

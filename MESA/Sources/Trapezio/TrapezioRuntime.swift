@@ -16,17 +16,21 @@
 
 import SwiftUI
 
+/// Binds a store to its UI and drives ``TrapezioLifecycle`` from the hosting view.
+///
+/// Generic parameters are suffixed `Type` so that `State` unambiguously means `SwiftUI.State`
+/// inside this declaration.
 @MainActor
-internal struct TrapezioRuntime<S, State, Event, Store, UI>: View
-where S: TrapezioScreen, State: TrapezioState, Event: TrapezioEvent,
-      Store: TrapezioStore<S, State, Event>, UI: TrapezioUI,
-      UI.State == State, UI.Event == Event {
+internal struct TrapezioRuntime<ScreenType, StateType, EventType, Store, UI>: View
+where ScreenType: TrapezioScreen, StateType: TrapezioState, EventType: TrapezioEvent,
+      Store: TrapezioStore<ScreenType, StateType, EventType>, UI: TrapezioUI,
+      UI.State == StateType, UI.Event == EventType {
 
     @ObservedObject var presenter: Store
     private let ui: UI
 
-    /// Tracks whether `onFirstAppear` has already been delivered for this view identity.
-    @SwiftUI.State private var hasAppeared = false
+    /// Whether `onFirstAppear` has already been delivered for this view identity.
+    @State private var hasAppeared = false
 
     internal init(presenter: Store, ui: UI) {
         self.presenter = presenter

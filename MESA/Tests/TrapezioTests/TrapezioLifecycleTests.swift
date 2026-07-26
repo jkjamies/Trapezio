@@ -17,6 +17,7 @@
 import Combine
 import Foundation
 import Testing
+import os
 @testable import Trapezio
 
 // MARK: - Helpers
@@ -29,10 +30,13 @@ actor ValueBox<T: Sendable> {
 }
 
 /// Tallies `objectWillChange` emissions without a captured `var`.
-@MainActor
-final class ChangeCounter {
-    private(set) var value = 0
-    func increment() { value += 1 }
+///
+/// Deliberately not `@MainActor`: Combine delivers to a non-isolated closure, so a main-actor
+/// call from inside `sink` would not compile under strict concurrency.
+final class ChangeCounter: @unchecked Sendable {
+    private let counter = OSAllocatedUnfairLock<Int>(initialState: 0)
+    var value: Int { counter.withLock { $0 } }
+    func increment() { counter.withLock { $0 += 1 } }
 }
 
 /// A one-shot signal letting a test wait until a task has actually started running.
@@ -64,7 +68,8 @@ struct TrapezioTaskBagTests {
         bag.cancelAll()
         await task.value
 
-        #expect(await observed.value == true)
+        let wasCancelled = await observed.value
+        #expect(wasCancelled == true)
     }
 
     @Test("completed tasks remove themselves from the bag")
@@ -95,7 +100,8 @@ struct TrapezioTaskBagTests {
         bag = nil
         await task.value
 
-        #expect(await observed.value == true)
+        let wasCancelled = await observed.value
+        #expect(wasCancelled == true)
     }
 
     @Test("cancelAll is safe to call twice")
@@ -185,7 +191,8 @@ struct TrapezioStoreWorkTests {
         store = nil
         await task.value
 
-        #expect(await observed.value == true)
+        let wasCancelled = await observed.value
+        #expect(wasCancelled == true)
     }
 }
 

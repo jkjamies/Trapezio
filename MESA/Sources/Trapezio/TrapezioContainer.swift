@@ -62,16 +62,22 @@ public struct TrapezioContainer<Store: ObservableObject, Content: View>: View {
 public extension TrapezioContainer {
     /// Convenience initializer for the common Trapezio pattern: `TrapezioStore + TrapezioUI`.
     ///
-    /// The concrete store type is preserved, so `content` and callers keep access to
-    /// subclass-specific API rather than seeing the erased `TrapezioStore` base class.
-    init<S: TrapezioScreen, AState: TrapezioState, AEvent: TrapezioEvent, UI: TrapezioUI>(
-        makeStore: @escaping @autoclosure () -> Store,
+    /// - Note: `Store` is the erased `TrapezioStore` base class here, so subclass-specific API
+    ///   is not reachable from this initializer. `handle(event:)` and `update(_:)` still
+    ///   dispatch dynamically to your subclass, so this is the right choice for the common
+    ///   case. When you need the concrete type — to read a store's own `messageManager`, say —
+    ///   use the primary initializer, which infers `Store` from what you pass it:
+    ///
+    ///   ```swift
+    ///   TrapezioContainer(makeStore: CounterStore(...)) { store in
+    ///       store.render(with: CounterUI())        // `store` is a CounterStore
+    ///   }
+    ///   ```
+    init<S: TrapezioScreen, State: TrapezioState, Event: TrapezioEvent, UI: TrapezioUI>(
+        makeStore: @escaping @autoclosure () -> TrapezioStore<S, State, Event>,
         ui: UI
-    ) where Store: TrapezioStore<S, AState, AEvent>,
-            UI.State == AState,
-            UI.Event == AEvent,
-            Content == AnyView {
-        _store = StateObject(wrappedValue: makeStore())
+    ) where Store == TrapezioStore<S, State, Event>, Content == AnyView, UI.State == State, UI.Event == Event {
+        _store = SwiftUI.StateObject(wrappedValue: makeStore())
         self.content = { store in
             AnyView(store.render(with: ui))
         }

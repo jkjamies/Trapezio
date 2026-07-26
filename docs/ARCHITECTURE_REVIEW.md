@@ -8,6 +8,51 @@ compiled or executed. Every finding below was derived by reading the source. Fin
 **Confirmed** (follows directly from the code and documented Swift semantics) or **Likely** (needs a
 build/run to settle).
 
+## Status
+
+Everything below except deep links has been addressed on this branch. Deep-link and state
+restoration (**S2-7**) is deferred by request — the `Codable` requirement on `TrapezioScreen`
+stays in place for it.
+
+| Finding | Status |
+|:---|:---|
+| S1-1 · `state` data race | Fixed — `nonisolated(unsafe)` removed, `launch(snapshot:)` added |
+| S1-2 · unsynchronised continuation | Fixed — held under the same lock as the flag |
+| S1-3 · `lazy var` stream | Fixed — built eagerly in `init` |
+| S1-4 · uncancelled collect tasks | Fixed — `TrapezioTaskBag` + store-scoped `launch`/`collect` |
+| S1-5 · repository observer growth | Fixed — pruned on yield |
+| S1-6 · `ModelContext` per render | Fixed — graph moved inside the autoclosure |
+| S1-7 · message continuations never finished | Fixed — `ContinuationRegistry` finishes on dealloc |
+| S2-1 · subject stream single-consumer | Fixed — broadcast from one driver task |
+| S2-2 · sample bypasses the interactor | Fixed — `callAsFunction` + `.stream` |
+| S2-3 · no cancellation on teardown | Fixed — see S1-4 |
+| S2-4 · soft timeout | Documented precisely; behaviour unchanged |
+| S2-5 · `inProgress` re-entrancy | Fixed — refcounted |
+| S2-6 · duplicate push | Fixed — top-of-stack guard |
+| S2-7 · `Codable` funds nothing | **Deferred** — deep links to be implemented later |
+| S2-8 · no lifecycle events | Fixed — `TrapezioLifecycle` driven by the runtime |
+| S2-9 · `localizedDescription` shadowing | Fixed — `StrataException: LocalizedError` |
+| S2-10 · container erases store type | Documented — primary initializer preserves it |
+| S2-11 · `TrapezioInterop` unisolated | **Open** — see below |
+| S3-1 … S3-8 · doc drift | Fixed; instruction files single-sourced with a CI check |
+| S4-1 … S4-3 · workflow hardening | Fixed |
+| S4-5, S4-6 · SwiftData template | **Open** — file protection and `fatalError` unchanged |
+| S4-7 · no `SECURITY.md` | Fixed |
+| S4-8 · no DI story | **Open** — pairs with the deep-link registry |
+| S4-9 … S4-12, sample polish | Fixed except SwiftUI-layer view tests |
+
+Still open, in the order I would take them: S2-11 (isolate `TrapezioInterop`), S4-5/S4-6
+(SwiftData file protection and graceful container failure in the sample), S4-8 + S2-7 (factory
+registry, which deep links need anyway), and view-level tests for `TrapezioContainer` /
+`TrapezioNavigationHost`.
+
+> **Nothing on this branch has been compiled.** The review environment has no Swift toolchain, so
+> CI is the first real build. The highest-risk items are the XCFramework job in
+> `publish-release.yml` (unverifiable `xcodebuild` archive paths) and the strict-concurrency
+> annotations on the new task bag and registries.
+
+---
+
 Severity legend:
 
 | | Meaning |

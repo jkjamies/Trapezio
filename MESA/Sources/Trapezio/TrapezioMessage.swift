@@ -79,7 +79,7 @@ public class TrapezioMessageManager: ObservableObject {
     public var messagesSequence: AsyncStream<[TrapezioMessage]> {
         let current = messages
         let registry = subscribers
-        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+        return AsyncStream<[TrapezioMessage]>(bufferingPolicy: .bufferingNewest(1)) { continuation in
             // Emit the initial value immediately.
             continuation.yield(current)
 
