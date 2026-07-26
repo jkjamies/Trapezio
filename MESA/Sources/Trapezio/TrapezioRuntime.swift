@@ -24,15 +24,29 @@ where S: TrapezioScreen, State: TrapezioState, Event: TrapezioEvent,
 
     @ObservedObject var presenter: Store
     private let ui: UI
-    
+
+    /// Tracks whether `onFirstAppear` has already been delivered for this view identity.
+    @SwiftUI.State private var hasAppeared = false
+
     internal init(presenter: Store, ui: UI) {
         self.presenter = presenter
         self.ui = ui
     }
-    
-    public var body: some View {
+
+    internal var body: some View {
         ui.map(state: presenter.state) { event in
             presenter.handle(event: event)
+        }
+        .onAppear {
+            guard let lifecycle = presenter as? any TrapezioLifecycle else { return }
+            if !hasAppeared {
+                hasAppeared = true
+                lifecycle.onFirstAppear()
+            }
+            lifecycle.onAppear()
+        }
+        .onDisappear {
+            (presenter as? any TrapezioLifecycle)?.onDisappear()
         }
     }
 }

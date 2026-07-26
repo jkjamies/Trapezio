@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import Foundation
 import os
 
 /// Base class for interactors that produce a continuous stream of data.
@@ -27,13 +28,27 @@ import os
 ///         repository.observeLastValue()
 ///     }
 /// }
+///
+/// // In the store:
+/// collect(observeLastValue.stream) { [weak self] value in
+///     self?.update { $0.lastSaved = value }
+/// }
+/// observeLastValue(())   // trigger
 /// ```
 ///
+/// - Note: ``createObservable(params:)`` is the method you *override*, never the one you call.
+///   Trigger with ``callAsFunction(_:)`` and consume ``stream``; calling `createObservable`
+///   directly bypasses re-trigger cancellation and the ``value`` cache.
 /// - Note: The ``value`` property provides thread-safe synchronous access to the latest emitted value.
 open class StrataSubjectInteractor<P: Sendable, T: Sendable>: @unchecked Sendable {
 
     private let paramContinuation: AsyncStream<P>.Continuation
-    private let paramStream: AsyncStream<P>
+
+    /// Downstream consumers of ``stream``. Broadcast, so every consumer sees every emission.
+    private let subscribers = ContinuationRegistry<T>()
+
+    /// The long-lived task that maps parameters to output streams.
+    private let driver = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
     /// The latest value emitted by the stream (thread-safe, read-only externally).
     private let _value = OSAllocatedUnfairLock<T?>(initialState: nil)
@@ -44,13 +59,43 @@ open class StrataSubjectInteractor<P: Sendable, T: Sendable>: @unchecked Sendabl
 
     public init() {
         var continuation: AsyncStream<P>.Continuation!
-        self.paramStream = AsyncStream { cont in
+        // Only the most recent trigger matters — a new parameter cancels the previous inner
+        // stream anyway — so buffering one keeps an idle interactor bounded.
+        let params = AsyncStream<P>(bufferingPolicy: .bufferingNewest(1)) { cont in
             continuation = cont
         }
         self.paramContinuation = continuation
+
+        // Every stored property is initialized, so `self` may now be captured. Weakly: the
+        // driver must not keep the interactor alive.
+        let task = Task { [weak self] in
+            var inner: Task<Void, Never>?
+            for await param in params {
+                inner?.cancel()
+                inner = Task { [weak self] in
+                    guard let self else { return }
+                    for await output in self.createObservable(params: param) {
+                        if Task.isCancelled { break }
+                        self.value = output
+                        self.subscribers.yield(output)
+                    }
+                }
+            }
+            inner?.cancel()
+        }
+        driver.withLock { $0 = task }
+    }
+
+    deinit {
+        // Ends the driver loop, which in turn cancels any inner stream.
+        paramContinuation.finish()
+        driver.withLock { $0 }?.cancel()
+        // `subscribers` finishes its continuations in its own deinit, so consumers terminate.
     }
 
     /// Triggers the stream with new parameters.
+    ///
+    /// Cancels any in-flight inner stream from a previous trigger before starting the new one.
     ///
     /// - Parameter params: The input to pass to ``createObservable(params:)``.
     public func callAsFunction(_ params: P) {
@@ -59,35 +104,20 @@ open class StrataSubjectInteractor<P: Sendable, T: Sendable>: @unchecked Sendabl
 
     /// The output stream that yields values from ``createObservable(params:)``.
     ///
-    /// Each access creates a **new** `AsyncStream` backed by its own `Task`. The task is
-    /// automatically cancelled when the stream's consumer stops iterating (via `onTermination`).
-    /// Typically you should call this once and collect it with `strataCollect`.
+    /// Each access opens an independent subscription; **all subscriptions receive every
+    /// emission**. Subscriptions end when the consumer stops iterating, or when this
+    /// interactor deallocates.
     ///
-    /// When a new parameter arrives via ``callAsFunction(_:)``, the previous inner stream is
-    /// cancelled before starting the new one, preventing duplicate or stale emissions.
-    ///
-    /// - Important: Calling this property multiple times creates independent streams and tasks.
+    /// - Note: Emissions are not replayed. A consumer that subscribes after a value has
+    ///   already been produced sees the next one; read ``value`` for the current cache.
+    /// - Note: Buffering is `.bufferingNewest(16)` per subscription, so one slow consumer
+    ///   cannot grow memory without bound or stall the others.
     public var stream: AsyncStream<T> {
-        AsyncStream { continuation in
-            let task = Task { [weak self] in
-                guard let self = self else { return }
-                var innerTask: Task<Void, Never>?
-                for await param in self.paramStream {
-                    innerTask?.cancel()
-                    innerTask = Task { [weak self] in
-                        guard let self = self else { return }
-                        let outputStream = self.createObservable(params: param)
-                        for await output in outputStream {
-                            guard !Task.isCancelled else { break }
-                            continuation.yield(output)
-                            self.value = output
-                        }
-                    }
-                }
-                innerTask?.cancel()
-            }
+        let registry = subscribers
+        return AsyncStream(bufferingPolicy: .bufferingNewest(16)) { continuation in
+            let id = registry.register(continuation)
             continuation.onTermination = { _ in
-                task.cancel()
+                registry.unregister(id)
             }
         }
     }
@@ -100,4 +130,3 @@ open class StrataSubjectInteractor<P: Sendable, T: Sendable>: @unchecked Sendabl
         fatalError("createObservable(params:) must be implemented")
     }
 }
-
