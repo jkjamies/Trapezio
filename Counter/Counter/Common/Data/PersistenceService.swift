@@ -33,7 +33,12 @@ public final class PersistenceService {
         let schema = Schema([
             MESAModel.self,
         ])
-        let storeURL = URL.applicationSupportDirectory.appending(path: "MESA.store")
+        // Application Support is not guaranteed to exist on iOS, and SwiftData will not create
+        // intermediate directories for an explicit store URL — without this the container fails
+        // to open and we silently fall back to in-memory.
+        let directory = URL.applicationSupportDirectory
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let storeURL = directory.appending(path: "MESA.store")
 
         do {
             container = try ModelContainer(
