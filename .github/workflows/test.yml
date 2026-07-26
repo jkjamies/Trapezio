@@ -1,8 +1,9 @@
 name: MESA-iOS CI
 
 on:
+  # No base-branch filter: stacked pull requests target each other rather than `main`, and a
+  # filter of `[ main ]` means every intermediate PR in a stack silently gets no CI at all.
   pull_request:
-    branches: [ main ]
   push:
     branches: [ main ]
 
