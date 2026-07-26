@@ -64,7 +64,7 @@ Read the diff output AND the full content of every changed file. Security issues
 - [ ] No predicate injection via `NSPredicate` or `#Predicate` with unsanitized user input
 - [ ] Format strings don't use user-controlled data
 - [ ] File paths not constructed from user input without sanitization
-- [ ] Deep link / navigation parameters validated in routing
+- [ ] Deep link / navigation parameters validated in routing. `TrapezioScreen` is `Codable`, and the library does **not** validate a decoded screen's parameters — anything decoded from a URL or other untrusted source must be checked before use
 
 ---
 
@@ -73,7 +73,9 @@ Read the diff output AND the full content of every changed file. Security issues
 - [ ] No race conditions that could lead to auth bypass or privilege escalation
 - [ ] Token/session state not shared mutably across isolation boundaries without synchronization
 - [ ] `@unchecked Sendable` only used on interactor subclasses (not to suppress legitimate warnings)
-- [ ] `nonisolated(unsafe)` only used on `TrapezioStore.state` (framework pattern)
+- [ ] No `nonisolated(unsafe)` on shared mutable state. A multi-field struct is not read atomically, and any refcounted field races the writer — this is memory unsafety, not just a warning suppression
+- [ ] Long-lived tasks are tracked in a `TrapezioTaskBag` so they cannot outlive their owner
+- [ ] `AsyncStream` continuations are finished on `deinit`, and `onTermination` captures its registry weakly
 - [ ] `OSAllocatedUnfairLock` usage is correct (balanced lock/unlock)
 - [ ] Cancellation does not leave security-sensitive operations in an incomplete state
 
@@ -84,7 +86,8 @@ Read the diff output AND the full content of every changed file. Security issues
 - [ ] No `print()` statements logging sensitive data (passwords, tokens, PII)
 - [ ] No `debugPrint()` or `dump()` of sensitive objects
 - [ ] Debug-only code guarded with `#if DEBUG`
-- [ ] Error messages do not leak implementation details (class names, file paths)
+- [ ] Error messages do not leak implementation details (class names, file paths). Note `StrataExecutionException` deliberately captures `underlyingErrorType` and `underlyingErrorDescription` for diagnostics — do not surface those to users
+- [ ] `os.Logger` interpolations of route parameters or user data stay `.private` (the default for dynamic strings); no `print()` substituted for them
 - [ ] `StrataException.message` doesn't contain internal system details exposed to users
 
 ---

@@ -1,3 +1,15 @@
+<!--
+  AGENTS.md is the canonical project instructions for this repository.
+
+  CLAUDE.md, GEMINI.md, .junie/guidelines.md, and .github/copilot-instructions.md are
+  byte-identical copies, kept in sync by the "Agent instructions in sync" CI job. Edit this
+  file, then copy it over the four mirrors:
+
+      for m in CLAUDE.md GEMINI.md .junie/guidelines.md .github/copilot-instructions.md; do
+        cp AGENTS.md "$m"
+      done
+-->
+
 # MESA-iOS Project Guide [iOS]
 
 > **For AI Agents**: This document provides comprehensive context for understanding and contributing to the MESA-iOS codebase. Read this entire document before making changes.
@@ -93,6 +105,20 @@ flowchart LR
 
 ---
 
+## ✅ Verification
+
+| What | Command |
+|:---|:---|
+| Package build | `cd MESA && swift build` |
+| Package tests | `cd MESA && swift test --parallel` |
+| Sample app | `xcodebuild build -scheme Counter -destination 'platform=iOS Simulator,name=iPhone 17'` |
+| Sample app tests | `xcodebuild test -scheme Counter -destination 'platform=iOS Simulator,name=iPhone 17'` |
+
+`swift test` compiles for macOS only. CI additionally builds every library for
+`generic/platform=iOS` to verify the declared iOS minimum.
+
+---
+
 ## 📏 Coding Standards & Principles
 
 ### 1. Swift Expert Idioms
@@ -173,6 +199,7 @@ Year format: `2026` or `2026-<currentYear>`.
 
 ## 📂 Directory Structure
 ```text
+AGENTS.md                    # Canonical agent instructions (see "Instruction mirrors" below)
 MESA/                        # Swift Package
   ├── Package.swift
   ├── Sources/
@@ -181,8 +208,41 @@ MESA/                        # Swift Package
   │   ├── Strata/            # Clean Arch use case layer
   │   └── TrapezioTest/      # Test utilities (FakeTrapezioNavigator, TestEventSink, etc.)
   └── Tests/
-Counter/                     # Sample Xcode app
+Counter/                     # Sample Xcode app (iOS 17+, uses SwiftData)
+docs/                        # Architecture review and long-form notes
+.claude/skills/              # Repository skills (see below)
 ```
+
+### Instruction mirrors
+`AGENTS.md` is the source of truth. `CLAUDE.md`, `GEMINI.md`, `.junie/guidelines.md`, and
+`.github/copilot-instructions.md` are **byte-identical copies**. Edit `AGENTS.md`, then:
+
+```bash
+for m in CLAUDE.md GEMINI.md .junie/guidelines.md .github/copilot-instructions.md; do
+  cp AGENTS.md "$m"
+done
+```
+
+The `Agent instructions in sync` CI job fails the build when they diverge.
+
+### Skills
+Repository skills live in `.claude/skills/`. Prefer them over ad-hoc scaffolding — they encode
+the conventions in this document:
+
+| Skill | Purpose |
+|:---|:---|
+| `add-feature` | Scaffold a feature module (Domain / Data / Presentation) |
+| `add-screen` | Add a Screen + State + Event + Store + UI + Factory |
+| `add-interactor` | Scaffold a `StrataInteractor` or `StrataSubjectInteractor` with fake and test |
+| `add-tests` | Add or extend coverage for changed files |
+| `review` | Quick diff review |
+| `prepare-pr` | Pre-merge audit |
+| `security-check` | Security-focused pass |
+| `fix` | Targeted fix for a build error, crash, or failing test |
+| `bump-version` | Update `VERSION` and release metadata |
+
+When library API changes, update the skills in the same change — a stale skill generates code
+against the old API.
 
 ### Feature Directory Example
 ```text

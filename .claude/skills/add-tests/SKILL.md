@@ -104,7 +104,7 @@ final class <Name>StoreTests: XCTestCase {
 
     func test_<asyncEvent>_updatesState() async throws {
         store.handle(event: .<asyncEvent>)
-        try await Task.sleep(nanoseconds: 10_000_000) // 10ms for strataLaunch
+        try await Task.sleep(nanoseconds: 10_000_000) // 10ms for the store's detached launch
         XCTAssertEqual(store.state.<field>, <expectedValue>)
     }
 }
@@ -183,7 +183,7 @@ final class <Name>UseCaseTests: XCTestCase {
 ### StrataSubjectInteractor Test Pattern
 
 ```swift
-@Test("emits values from createObservable")
+@Test("emits values for each trigger")
 func basicEmission() async {
     let interactor = <Name>UseCase(/* dependencies */)
 
@@ -216,7 +216,15 @@ When dependencies need faking, create Fake classes in a `Fakes/` subdirectory:
   - `FakeTrapezioNavigator` — records all navigation events (`goTo`, `dismiss`, `popWithResult`, etc.) for assertion
   - `TestEventSink<E>` — records events via `callAsFunction`, provides `.events`, `.last`, `.count`
   - `TrapezioStore.test { state in }` — headless state assertion without UI
-  - `TrapezioStore.awaitState(until:validate:)` — waits for async state changes before asserting
+  - `TrapezioStore.awaitState(until:validate:)` — waits for async state changes before asserting. It returns `Bool`; assert on it so a timeout reads as a timeout rather than a confusing assertion failure
+
+Stores that conform to `TrapezioLifecycle` start observation in `onFirstAppear()`, which the
+runtime calls from the view. A headless test has no view, so call it explicitly:
+
+```swift
+let store = <Name>Store(screen: <Name>Screen(), navigator: nil)
+store.onFirstAppear()   // start observation the way the runtime would
+```
 
 ```swift
 import Foundation
@@ -235,7 +243,9 @@ import Trapezio
 import TrapezioNavigation
 @testable import <AppTarget>
 
-class FakeInterop: TrapezioInterop {
+// TrapezioInterop is @MainActor, so conformers must match its isolation.
+@MainActor
+final class FakeInterop: TrapezioInterop {
     var sentEvents: [any TrapezioInteropEvent] = []
     func send(_ event: any TrapezioInteropEvent) {
         sentEvents.append(event)
@@ -273,6 +283,6 @@ All generated files MUST include the Apache 2.0 license header:
 
 After generating or updating tests, attempt to compile:
 - MESA library: `cd MESA && swift test --parallel`
-- Counter app: Report the run command to the user: `xcodebuild test -scheme Counter -destination 'platform=iOS Simulator,name=iPhone 16'`
+- Counter app: Report the run command to the user: `xcodebuild test -scheme Counter -destination 'platform=iOS Simulator,name=iPhone 17'`
 
 Fix any compilation issues before finishing.

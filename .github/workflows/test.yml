@@ -71,14 +71,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Verify mirrors match CLAUDE.md
+      - name: Verify mirrors match AGENTS.md
         run: |
-          # CLAUDE.md is canonical; the other three are copies. Four hand-maintained
-          # near-duplicates is how they drifted apart in the first place.
+          # AGENTS.md is canonical; the rest are copies. Five hand-maintained near-duplicates
+          # is how they drifted apart in the first place.
           status=0
-          for mirror in GEMINI.md .junie/guidelines.md .github/copilot-instructions.md; do
-            if ! cmp -s CLAUDE.md "$mirror"; then
-              echo "::error file=$mirror::$mirror differs from CLAUDE.md — copy CLAUDE.md over it"
+          for mirror in CLAUDE.md GEMINI.md .junie/guidelines.md .github/copilot-instructions.md; do
+            if ! cmp -s AGENTS.md "$mirror"; then
+              echo "::error file=$mirror::$mirror differs from AGENTS.md — run: cp AGENTS.md $mirror"
               status=1
             fi
           done

@@ -238,7 +238,7 @@ struct CounterFactory {
 }
 ```
 
-> **`makeStore` is an `@autoclosure`.** Store construction is deferred to `@StateObject` and happens once — but only for what is written *inside* it. Dependencies built in the surrounding factory body run on every view evaluation and are then discarded, which is expensive for repositories, database contexts, and network clients:
+> **`makeStore` is an `@autoclosure`.** Store construction is deferred and happens once — but only for what is written *inside* it. Dependencies built in the surrounding factory body run on every view evaluation and are then discarded, which is expensive for repositories, database contexts, and network clients:
 >
 > ```swift
 > // Wrong — a new repository (and ModelContext) per render.

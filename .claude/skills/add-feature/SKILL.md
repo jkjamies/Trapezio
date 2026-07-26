@@ -174,7 +174,7 @@ All source files generated directly by this skill MUST include the Apache 2.0 li
 
 ## Step 7: Verify
 
-Run `cd MESA && swift build` to verify the package compiles. If app target files were changed, also run `xcodebuild build -scheme <AppTarget> -destination 'platform=iOS Simulator,name=<SimulatorDevice>'` (e.g., `-scheme Counter -destination 'platform=iOS Simulator,name=iPhone 16'`).
+Run `cd MESA && swift build` to verify the package compiles. If app target files were changed, also run `xcodebuild build -scheme <AppTarget> -destination 'platform=iOS Simulator,name=<SimulatorDevice>'` (e.g., `-scheme Counter -destination 'platform=iOS Simulator,name=iPhone 17'`).
 
 Report:
 - Which directories and files were created
