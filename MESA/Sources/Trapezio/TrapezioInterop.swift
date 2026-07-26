@@ -22,6 +22,10 @@ public protocol TrapezioInteropEvent {}
 
 /// Handles external communication from features to the app shell.
 /// Use for alerts, analytics, deep links, UIKit bridges, etc.
+///
+/// `@MainActor` to match ``TrapezioNavigator``: both are called from a store's event handler,
+/// and leaving one unisolated invited a background-thread `send` the compiler could not catch.
+@MainActor
 public protocol TrapezioInterop {
     /// Sends a type-safe interop event to the host.
     func send(_ event: any TrapezioInteropEvent)

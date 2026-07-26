@@ -14,13 +14,16 @@
  * limitations under the License.
  */
 
+import Observation
 import SwiftUI
 
 /// The single source of truth for a feature's presentation logic.
 ///
 /// `TrapezioStore` is the brain of every MESA feature. It holds the current ``State``,
 /// receives user intents as ``Event`` values, and mutates state via ``update(_:)``.
-/// SwiftUI observes state changes through `ObservableObject` conformance.
+/// SwiftUI observes state changes through the `@Observable` macro, which tracks reads at
+/// property granularity — a view that only reads `state.count` is not invalidated by a change
+/// to another field.
 ///
 /// Subclass this for each feature and override ``handle(event:)`` to map events to state changes:
 ///
@@ -45,8 +48,12 @@ import SwiftUI
 /// - Important: This class is `@MainActor`. All state reads/writes happen on the main thread.
 /// - Note: Use ``TrapezioContainer`` to preserve store identity across SwiftUI view updates.
 /// - Note: Conform to ``TrapezioLifecycle`` to receive appear/disappear callbacks from the runtime.
+/// - Note: `@Observable` applies to this class only. A subclass's own stored properties are not
+///   tracked, which is by design — feature state belongs in ``state``, not in subclass fields.
 @MainActor
-open class TrapezioStore<S: TrapezioScreen, State: TrapezioState, Event: TrapezioEvent>: ObservableObject, Identifiable {
+@Observable
+open class TrapezioStore<S: TrapezioScreen, State: TrapezioState, Event: TrapezioEvent>: Identifiable {
+    @ObservationIgnored
     public let screen: S
 
     /// Current state snapshot.
@@ -54,12 +61,17 @@ open class TrapezioStore<S: TrapezioScreen, State: TrapezioState, Event: Trapezi
     /// Reads and writes are both `@MainActor`-isolated. To use state inside detached work,
     /// take a `Sendable` snapshot on the main actor first — see
     /// ``launch(priority:snapshot:work:reduce:)``.
+    ///
+    /// Reading this from a SwiftUI `body` registers a dependency on the specific fields touched.
     public private(set) var state: State
 
     /// Cancellation scope for work started by this store.
     ///
     /// Cancelled automatically when the store deallocates. Call ``cancelAll()`` to tear work
     /// down earlier.
+    ///
+    /// Excluded from observation: it is infrastructure, not display state.
+    @ObservationIgnored
     public let tasks = TrapezioTaskBag()
 
     /// Creates a store with its associated screen and initial state.
@@ -81,16 +93,16 @@ open class TrapezioStore<S: TrapezioScreen, State: TrapezioState, Event: Trapezi
 
     /// Mutates state using copy-on-write semantics.
     ///
-    /// Creates a mutable copy of the current state, applies `transform`, and only publishes
+    /// Creates a mutable copy of the current state, applies `transform`, and only assigns
     /// the new state if it differs from the current value (checked via `Equatable`).
-    /// This prevents unnecessary SwiftUI re-renders.
+    /// Assigning an equal value would still notify observers, so the check prevents
+    /// unnecessary SwiftUI invalidation.
     ///
     /// - Parameter transform: A closure that mutates the state copy in place.
     public final func update(_ transform: (inout State) -> Void) {
         var copy = self.state
         transform(&copy)
         if copy != self.state {
-            self.objectWillChange.send()
             self.state = copy
         }
     }

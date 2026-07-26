@@ -33,23 +33,33 @@ stays in place for it.
 | S2-8 · no lifecycle events | Fixed — `TrapezioLifecycle` driven by the runtime |
 | S2-9 · `localizedDescription` shadowing | Fixed — `StrataException: LocalizedError` |
 | S2-10 · container erases store type | Documented — primary initializer preserves it |
-| S2-11 · `TrapezioInterop` unisolated | **Open** — see below |
+| S2-11 · `TrapezioInterop` unisolated | Fixed — `@MainActor`, matching the navigator |
 | S3-1 … S3-8 · doc drift | Fixed; instruction files single-sourced with a CI check |
 | S4-1 … S4-3 · workflow hardening | Fixed |
-| S4-5, S4-6 · SwiftData template | **Open** — file protection and `fatalError` unchanged |
+| S4-5, S4-6 · SwiftData template | Fixed — protection class set, in-memory fallback |
 | S4-7 · no `SECURITY.md` | Fixed |
 | S4-8 · no DI story | **Open** — pairs with the deep-link registry |
 | S4-9 … S4-12, sample polish | Fixed except SwiftUI-layer view tests |
 
-Still open, in the order I would take them: S2-11 (isolate `TrapezioInterop`), S4-5/S4-6
-(SwiftData file protection and graceful container failure in the sample), S4-8 + S2-7 (factory
-registry, which deep links need anyway), and view-level tests for `TrapezioContainer` /
-`TrapezioNavigationHost`.
+Closed after the first pass, in **0.3.0**: S2-11 (`TrapezioInterop` is now `@MainActor`),
+S4-5 and S4-6 (the sample's store sets a file-protection class and degrades to in-memory
+instead of calling `fatalError`).
+
+Also in 0.3.0, beyond the review: the deployment floor moved to iOS 17 / macOS 14 and the
+observation layer moved to `@Observable`. That was listed in the review only as a note under
+S3-8; it landed as a deliberate release decision. It removes the manual `objectWillChange.send()`
+and gives property-granular invalidation, and it makes reading `state` off the main actor a
+compile error rather than a documented rule.
+
+Still open: S2-7 + S4-8 (deep links and the factory registry — one piece of work, deferred by
+request) and view-level tests for `TrapezioContainer` / `TrapezioNavigationHost`.
 
 > **Nothing on this branch has been compiled.** The review environment has no Swift toolchain, so
-> CI is the first real build. The highest-risk items are the XCFramework job in
-> `publish-release.yml` (unverifiable `xcodebuild` archive paths) and the strict-concurrency
-> annotations on the new task bag and registries.
+> CI is the first real build. Highest-risk items, in order: the `@Observable` migration (macro
+> behaviour on a generic `open` class, and `TrapezioContainer`'s lazy store box replacing
+> `@StateObject`'s autoclosure), the XCFramework job in `publish-release.yml` (unverifiable
+> `xcodebuild` archive paths), and the strict-concurrency annotations on the task bag and
+> registries.
 
 ---
 

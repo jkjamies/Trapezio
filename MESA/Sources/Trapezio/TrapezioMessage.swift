@@ -15,6 +15,7 @@
  */
 
 import Foundation
+import Observation
 
 /// A transient message to be displayed to the user (e.g., Snackbar, Alert).
 public struct TrapezioMessage: Equatable, Identifiable, Sendable {
@@ -46,18 +47,20 @@ public struct TrapezioMessage: Equatable, Identifiable, Sendable {
 ///   needs a displayed message to survive a burst, clear it explicitly via ``clearMessage(id:)``
 ///   when it is dismissed rather than relying on queue position.
 @MainActor
-public class TrapezioMessageManager: ObservableObject {
+@Observable
+public class TrapezioMessageManager {
 
     /// Maximum number of queued messages before the oldest is dropped.
     public static let maxQueueSize = 10
 
-    @Published public private(set) var messages: [TrapezioMessage] = []
+    public private(set) var messages: [TrapezioMessage] = []
 
     /// Live subscriptions to ``messagesSequence``.
     ///
     /// Held as a sub-object so that when this manager deallocates, the registry deallocates
     /// with it and finishes every outstanding continuation — otherwise consumers would park on
     /// a stream that never ends.
+    @ObservationIgnored
     private let subscribers = ContinuationRegistry<[TrapezioMessage]>()
 
     /// The oldest queued message, or `nil` when the queue is empty.

@@ -22,9 +22,9 @@ import SwiftData
 struct SummaryFactory {
     @MainActor
     static func make(screen: SummaryScreen, navigator: (any TrapezioNavigator)?) -> some View {
-        // Composition Root: the whole graph is assembled *inside* the autoclosure, so it is
-        // built once by @StateObject rather than on every view evaluation. Hoisting the
-        // repository out of here would allocate a fresh ModelContext per render and throw it away.
+        // Composition Root: the whole graph is assembled *inside* the autoclosure, so the
+        // container builds it once rather than on every view evaluation. Hoisting the
+        // repository out of here would allocate a fresh ModelContext per render and discard it.
         TrapezioContainer(
             makeStore: {
                 let repository = SummaryRepositoryImpl(container: PersistenceService.shared.container)

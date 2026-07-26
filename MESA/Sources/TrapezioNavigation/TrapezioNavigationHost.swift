@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import Observation
 import SwiftUI
 import Trapezio
 import os
@@ -30,7 +31,7 @@ public struct TrapezioNavigationHost: View {
     /// Receives custom navigation/dismissal requests for legacy interop.
     public typealias InteropHandler = (_ event: TrapezioInteropEvent) -> Void
 
-    @StateObject private var navigator: TrapezioStackNavigator
+    @State private var navigator: TrapezioStackNavigator
 
     private let builder: (any TrapezioScreen, any TrapezioNavigator, any TrapezioInterop) -> AnyView
 
@@ -43,7 +44,7 @@ public struct TrapezioNavigationHost: View {
         onInterop: InteropHandler? = nil,
         @ViewBuilder builder: @escaping (_ screen: any TrapezioScreen, _ navigator: any TrapezioNavigator, _ interop: any TrapezioInterop) -> Content
     ) {
-        _navigator = StateObject(wrappedValue: TrapezioStackNavigator(root: root, onInterop: onInterop))
+        _navigator = State(wrappedValue: TrapezioStackNavigator(root: root, onInterop: onInterop))
         self.builder = { (screen: any TrapezioScreen, navigator: any TrapezioNavigator, interop: any TrapezioInterop) -> AnyView in
             AnyView(builder(screen, navigator, interop))
         }
@@ -89,12 +90,20 @@ private let logger = Logger(subsystem: "Trapezio", category: "Navigation")
 
 /// A library-owned navigator that drives a `NavigationStack` by mutating its path.
 @MainActor
-internal final class TrapezioStackNavigator: ObservableObject, TrapezioNavigator {
+@Observable
+internal final class TrapezioStackNavigator: TrapezioNavigator {
 
-    @Published internal var path: [TrapezioAnyScreen] = []
-    internal var root: (any TrapezioScreen)?
+    internal var path: [TrapezioAnyScreen] = []
 
+    @ObservationIgnored
+    internal let root: (any TrapezioScreen)?
+
+    @ObservationIgnored
     internal let interop: any TrapezioInterop
+
+    /// Not observed: results are consumed imperatively from lifecycle callbacks, never read
+    /// during `body`.
+    @ObservationIgnored
     private var results: [String: any TrapezioNavigationResult] = [:]
 
     internal init(root: any TrapezioScreen, onInterop: TrapezioNavigationHost.InteropHandler?) {

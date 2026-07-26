@@ -22,8 +22,8 @@ import PackageDescription
 let package = Package(
     name: "MESA",
     platforms: [
-        .iOS(.v16),     // Your primary target
-        .macOS(.v13)    // The "Helper" target for fast local testing/indexing
+        .iOS(.v17),     // Your primary target
+        .macOS(.v14)    // The "Helper" target for fast local testing/indexing
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
