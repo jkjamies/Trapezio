@@ -46,9 +46,11 @@ Read each changed file and look for actual problems. Do NOT present an exhaustiv
 - Swallowed errors
 - Incomplete state mutations
 - Missing `case` branches for event enums
-- Raw `Task { }` instead of `strataLaunch`/`strataCollect` in Stores
-- `@State`/`@StateObject` in `TrapezioUI` structs
-- Retain cycles in `strataCollect`/`strataLaunch` closures (missing `[weak self]`)
+- Raw `Task { }`, or the free `strata*` functions, instead of the store's `launch`/`collect` (only the store's methods are cancelled on deallocation)
+- Detached work reading `state` directly instead of using `launch(snapshot:work:reduce:)`
+- `@State` or other mutable storage in `TrapezioUI` structs
+- Retain cycles in `collect`/`launch` closures (missing `[weak self]`) — a task capturing its store strongly keeps the store alive and defeats automatic cancellation
+- Observation started in `init` instead of `TrapezioLifecycle.onFirstAppear()`
 - Blocking calls on the main thread
 - Leaked tasks or streams
 
@@ -65,8 +67,8 @@ Verify MESA conventions are followed. Present as a concise pass/fail list — on
 - [ ] Store is `@MainActor final class` extending `TrapezioStore`
 - [ ] State mutations only via `update { $0.field = value }`
 - [ ] Dependencies injected via `init`, not globals or singletons
-- [ ] Async work uses `strataLaunch`/`strataCollect`, not raw `Task { }`
-- [ ] Interactors return `StrataResult` (or use `executeCatching` — note: `executeCatching` now throws, wrap in `do/catch`)
+- [ ] Async work uses the store's `launch`/`collect`, not raw `Task { }` or untracked `strata*` calls
+- [ ] Interactors return `StrataResult` (or use `executeCatching`, which never throws — `CancellationError` becomes `.failure(StrataCancellationException)`)
 - [ ] Domain layer has no framework imports (no SwiftUI, SwiftData)
 - [ ] Data layer uses `actor` isolation
 - [ ] Module boundaries respected (presentation doesn't import data layer)

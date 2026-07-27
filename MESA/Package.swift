@@ -19,11 +19,17 @@
 
 import PackageDescription
 
+/// Pinned explicitly rather than inherited from the tools version, so a toolchain upgrade
+/// cannot silently relax strict concurrency checking for this package.
+let strictSwift6: [SwiftSetting] = [
+    .swiftLanguageMode(.v6)
+]
+
 let package = Package(
     name: "MESA",
     platforms: [
-        .iOS(.v16),     // Your primary target
-        .macOS(.v13)    // The "Helper" target for fast local testing/indexing
+        .iOS(.v17),     // Your primary target
+        .macOS(.v14)    // The "Helper" target for fast local testing/indexing
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
@@ -48,34 +54,42 @@ let package = Package(
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "Trapezio"
+            name: "Trapezio",
+            swiftSettings: strictSwift6
         ),
         .target(
             name: "TrapezioNavigation",
-            dependencies: ["Trapezio"]
+            dependencies: ["Trapezio"],
+            swiftSettings: strictSwift6
         ),
         .testTarget(
             name: "TrapezioTests",
-            dependencies: ["Trapezio"]
+            dependencies: ["Trapezio"],
+            swiftSettings: strictSwift6
         ),
         .target(
-            name: "Strata"
+            name: "Strata",
+            swiftSettings: strictSwift6
         ),
         .testTarget(
             name: "TrapezioNavigationTests",
-            dependencies: ["TrapezioNavigation"]
+            dependencies: ["TrapezioNavigation"],
+            swiftSettings: strictSwift6
         ),
         .testTarget(
             name: "StrataTests",
-            dependencies: ["Strata"]
+            dependencies: ["Strata"],
+            swiftSettings: strictSwift6
         ),
         .target(
             name: "TrapezioTest",
-            dependencies: ["Trapezio", "TrapezioNavigation"]
+            dependencies: ["Trapezio", "TrapezioNavigation"],
+            swiftSettings: strictSwift6
         ),
         .testTarget(
             name: "TrapezioTestTests",
-            dependencies: ["TrapezioTest"]
+            dependencies: ["TrapezioTest"],
+            swiftSettings: strictSwift6
         ),
     ]
 )

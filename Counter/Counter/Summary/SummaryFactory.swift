@@ -20,19 +20,21 @@ import TrapezioNavigation
 import SwiftData
 
 struct SummaryFactory {
-    @ViewBuilder @MainActor
+    @MainActor
     static func make(screen: SummaryScreen, navigator: (any TrapezioNavigator)?) -> some View {
-        // Composition Root: Assemble dependencies
-        let repo = SummaryRepositoryImpl(container: PersistenceService.shared.container)
-        
-        let saveUseCase = SaveLastValueUseCase(repository: repo)
-        let observeUseCase = ObserveLastValueUseCase(repository: repo)
-        
-        return TrapezioContainer(
-            makeStore: SummaryStore(screen: screen, 
-                                    navigator: navigator,
-                                    saveUseCase: saveUseCase,
-                                    observeUseCase: observeUseCase),
+        // Composition Root: the whole graph is assembled *inside* the autoclosure, so the
+        // container builds it once rather than on every view evaluation. Hoisting the
+        // repository out of here would allocate a fresh ModelContext per render and discard it.
+        TrapezioContainer(
+            makeStore: {
+                let repository = SummaryRepositoryImpl(container: PersistenceService.shared.container)
+                return SummaryStore(
+                    screen: screen,
+                    navigator: navigator,
+                    saveUseCase: SaveLastValueUseCase(repository: repository),
+                    observeUseCase: ObserveLastValueUseCase(repository: repository)
+                )
+            }(),
             ui: SummaryUI()
         )
     }

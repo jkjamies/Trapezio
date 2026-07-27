@@ -19,9 +19,10 @@ import Trapezio
 import TrapezioNavigation
 @testable import Counter
 
-class FakeInterop: TrapezioInterop {
+@MainActor
+final class FakeInterop: TrapezioInterop {
     var sentEvents: [any TrapezioInteropEvent] = []
-    
+
     func send(_ event: any TrapezioInteropEvent) {
         sentEvents.append(event)
     }

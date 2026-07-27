@@ -20,18 +20,12 @@ import TrapezioNavigation
 import Strata
 
 @MainActor
-final class CounterStore: TrapezioStore<CounterScreen, CounterState, CounterEvent> {
+final class CounterStore: TrapezioStore<CounterScreen, CounterState, CounterEvent>, TrapezioLifecycle {
     private let divideUsecase: any DivideUsecaseProtocol
     private let navigator: (any TrapezioNavigator)?
     private let interop: (any TrapezioInterop)?
-    public let messageManager = TrapezioMessageManager()
+    let messageManager = TrapezioMessageManager()
 
-    
-    // Mock error for demonstration
-    private struct MockError: StrataException {
-        let message: String
-    }
-    
     init(
         screen: CounterScreen,
         divideUsecase: any DivideUsecaseProtocol,
@@ -42,19 +36,20 @@ final class CounterStore: TrapezioStore<CounterScreen, CounterState, CounterEven
         self.navigator = navigator
         self.interop = interop
         super.init(screen: screen, initialState: CounterState(count: screen.initialValue))
-        setupBindings()
     }
-    
-    private func setupBindings() {
-        // Bind Message Manager
-        strataCollect(messageManager.messagesSequence) { [weak self] messages in
-             self?.update { $0.message = messages.first }
-        }
-            
-        // Bind UseCase stream
 
+    // MARK: - TrapezioLifecycle
+
+    /// Observation starts once, on first appearance. `collect` tracks the task in the store's
+    /// bag, so it is cancelled when the store deallocates.
+    func onFirstAppear() {
+        collect(messageManager.messagesSequence) { [weak self] messages in
+            self?.update { $0.message = messages.first }
+        }
     }
-    
+
+    // MARK: - Events
+
     override func handle(event: CounterEvent) {
         switch event {
         case .increment:
@@ -62,15 +57,18 @@ final class CounterStore: TrapezioStore<CounterScreen, CounterState, CounterEven
         case .decrement:
             update { $0.count -= 1 }
         case .divideByTwo:
-            strataLaunch(
-                work: { await self.divideUsecase.execute(value: self.state.count) },
-                reduce: { result in self.update { $0.count = result } }
+            // `work` runs off the main actor and so cannot read `state`. The snapshot closure
+            // captures what it needs on the main actor first.
+            launch(
+                snapshot: { $0.count },
+                work: { [divideUsecase] count in await divideUsecase.execute(value: count) },
+                reduce: { [weak self] result in self?.update { $0.count = result } }
             )
         case .goToSummary:
             navigator?.goTo(SummaryScreen(value: state.count))
         case .requestHelp:
             interop?.send(AppInterop.showAlert(message: "This is a simple counter. Press +/- to change value."))
-        case .throwError: // Needs to be added to Event enum first, usually
+        case .throwError:
             messageManager.emit(TrapezioMessage(message: "Simulated Failure"))
         case .clearError(let id):
             messageManager.clearMessage(id: id)

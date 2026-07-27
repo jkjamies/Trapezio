@@ -17,7 +17,6 @@
 import SwiftData
 import Foundation
 
-@available(iOS 17, *)
 @Model
 public final class MESAModel {
     public var lastSavedValue: Int

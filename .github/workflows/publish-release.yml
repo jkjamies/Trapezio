@@ -4,12 +4,17 @@ on:
   release:
     types: [ published ]
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Validate Package
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Build Package
         run: swift build
@@ -18,3 +23,58 @@ jobs:
       - name: Run Tests
         run: swift test --parallel
         working-directory: MESA
+
+  xcframework:
+    name: XCFramework (${{ matrix.scheme }})
+    needs: validate
+    runs-on: macos-26
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [ Trapezio, TrapezioNavigation, Strata ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Archive for device and simulator
+        working-directory: MESA
+        env:
+          SCHEME: ${{ matrix.scheme }}
+        run: |
+          set -euo pipefail
+          for platform in "iOS" "iOS Simulator"; do
+            slug="${platform// /-}"
+            xcodebuild archive \
+              -scheme "$SCHEME" \
+              -destination "generic/platform=$platform" \
+              -archivePath "$RUNNER_TEMP/$SCHEME-$slug.xcarchive" \
+              -quiet \
+              SKIP_INSTALL=NO \
+              BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+          done
+
+      - name: Create XCFramework
+        env:
+          SCHEME: ${{ matrix.scheme }}
+        run: |
+          set -euo pipefail
+          xcodebuild -create-xcframework \
+            -framework "$RUNNER_TEMP/$SCHEME-iOS.xcarchive/Products/usr/local/lib/$SCHEME.framework" \
+            -framework "$RUNNER_TEMP/$SCHEME-iOS-Simulator.xcarchive/Products/usr/local/lib/$SCHEME.framework" \
+            -output "$RUNNER_TEMP/$SCHEME.xcframework"
+          cd "$RUNNER_TEMP"
+          zip -qry "$SCHEME.xcframework.zip" "$SCHEME.xcframework"
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SCHEME: ${{ matrix.scheme }}
+          # From the release event payload, not user input, but kept out of the script body
+          # on principle.
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" "$RUNNER_TEMP/$SCHEME.xcframework.zip" --clobber

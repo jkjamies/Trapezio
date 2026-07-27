@@ -1,3 +1,15 @@
+<!--
+  AGENTS.md is the canonical project instructions for this repository.
+
+  CLAUDE.md, GEMINI.md, .junie/guidelines.md, and .github/copilot-instructions.md are
+  byte-identical copies, kept in sync by the "Agent instructions in sync" CI job. Edit this
+  file, then copy it over the four mirrors:
+
+      for m in CLAUDE.md GEMINI.md .junie/guidelines.md .github/copilot-instructions.md; do
+        cp AGENTS.md "$m"
+      done
+-->
+
 # MESA-iOS Project Guide [iOS]
 
 > **For AI Agents**: This document provides comprehensive context for understanding and contributing to the MESA-iOS codebase. Read this entire document before making changes.
@@ -23,7 +35,7 @@ We enforce a strict implementation of **Clean Architecture** combined with **MVI
 
 ### 1. The Separation of Concerns
 *   **Presentation Layer (UI & Logic)**:
-    *   **Components**: `TrapezioStore`, `TrapezioUI`, `TrapezioScreen`, `TrapezioContainer`, `TrapezioRuntime`, `TrapezioMessage`/`TrapezioMessageManager`. Test utilities: `TrapezioTest` library (`FakeTrapezioNavigator`, `TestEventSink`, `TrapezioStore.test()`/`.awaitState()`).
+    *   **Components**: `TrapezioStore`, `TrapezioUI`, `TrapezioScreen`, `TrapezioContainer`, `TrapezioRuntime`, `TrapezioLifecycle`, `TrapezioTaskBag`, `TrapezioMessage`/`TrapezioMessageManager`. Test utilities: `TrapezioTest` library (`FakeTrapezioNavigator`, `TestEventSink`, `TrapezioStore.test()`/`.awaitState()`).
     *   **Threading**: Strictly **@MainActor**.
     *   **Dependencies**: Depends on `:domain`. NEVER depends on `:data`.
     *   **Rule**: UI is a stateless function of State. Store is the Single Source of Truth.
@@ -43,27 +55,30 @@ We enforce a strict implementation of **Clean Architecture** combined with **MVI
 ### 2. Strata Operations (Use Cases)
 *   **`StrataInteractor<P, T>`**: Open class for one-shot async operations.
     *   Subclass and override `doWork(params:)`.
-    *   Returns `StrataResult<T>`. Call via `execute(params: P, timeout: TimeInterval = strataInteractorDefaultTimeout)` — `timeout` defaults to 5 minutes and can be omitted. Existing callers of `execute(params:)` require no changes; the `timeout` parameter is additive with a default value.
-    *   Built-in `inProgress` (thread-safe via `OSAllocatedUnfairLock`) and `inProgressStream` (single-consumer `AsyncStream<Bool>`).
-    *   `executeCatching(params:block:)` bridges throwing code to `StrataResult`. Re-throws `CancellationError`.
-    *   Exceeding `timeout` returns `.failure(StrataTimeoutException)`.
+    *   Returns `StrataResult<T>`. Call via `execute(params:timeout:)`.
+    *   Built-in `inProgress` (thread-safe via `OSAllocatedUnfairLock`) and `inProgressStream` (single-consumer `AsyncStream<Bool>`, created in `init`, finished on dealloc). Concurrent executions are refcounted — `inProgress` stays `true` until the last in-flight call finishes.
+    *   `executeCatching(params:block:)` bridges throwing code to `StrataResult`. Nothing is re-thrown; `CancellationError` becomes `.failure(StrataCancellationException)`.
+    *   Configurable `timeout` (default: 5 minutes). Exceeding timeout returns `.failure(StrataTimeoutException)`. The timeout is a **cancellation signal, not a hard deadline** — `doWork` is a child task, so `execute` cannot return until it finishes. Check `Task.isCancelled` in long-running work.
 *   **`StrataSubjectInteractor<P, T>`**: Open class for observing streams of data.
     *   Subclass and override `createObservable(params:)`.
-    *   Trigger via `callAsFunction(_:)`, consume via `.stream` property.
+    *   Trigger via `callAsFunction(_:)`, consume via `.stream` property. Never call `createObservable` directly — that bypasses re-trigger cancellation and the `value` cache.
     *   Re-triggering cancels the previous inner stream automatically.
+    *   `.stream` **broadcasts**: every access is an independent subscription and all receive every emission. No replay — subscribe before triggering.
     *   `value` property caches the latest emission (thread-safe, read-only externally).
 *   **`StrataResult<T>`**: Discriminated union (`.success(T)` / `.failure(StrataException)`).
     *   Chainable: `onSuccess`, `onFailure`, `map`, `flatMap`, `recover`, `fold`, `getOrNull`, `getOrDefault`, `getOrElse`.
-*   **`StrataException`**: Protocol (`Error & Sendable` + `message: String`) for domain failures.
-*   **`StrataExecutionException`**: Wraps unexpected (non-`StrataException`) errors. Preserves `underlyingError`.
+*   **`StrataException`**: Protocol (`LocalizedError & Sendable` + `message: String`) for domain failures. Refines `LocalizedError` so `message` survives being typed as `any Error` — a plain `Error` extension would be statically bypassed by Foundation's own `localizedDescription`.
+*   **`StrataExecutionException`**: Wraps unexpected (non-`StrataException`) errors. Preserves a `Sendable` snapshot as `underlyingErrorType` and `underlyingErrorDescription`.
 *   **`StrataTimeoutException`**: Indicates interactor execution exceeded its `timeout` duration. Carries `duration`.
+*   **`StrataCancellationException`**: Indicates the operation was cancelled via Swift's cooperative cancellation.
 *   **Concurrency Primitives (`TrapezioStrataConcurrency`)**:
     *   `strataLaunch(work:reduce:)`: Detached work + `@MainActor` reduce. Checks `Task.isCancelled` after work — skips `reduce` if cancelled. Returns `Task` handle for cancellation.
     *   `strataLaunchWithResult(operation:)`: Detached work wrapped in `StrataResult`. Returns `Task<StrataResult<T>, Never>`.
     *   `strataLaunchInterop(work:reduce:catch:)`: Legacy/migration interop — detached throwing work + `@MainActor` reduce/catch. Checks `Task.isCancelled` after work — routes `CancellationError()` to `catch` if cancelled. No MESA types required. Use `strataLaunch` with interactors for new code.
     *   `strataLaunchMain(work:reduce:)`: Main-thread work + `@MainActor` reduce. Checks `Task.isCancelled` after work — skips `reduce` if cancelled. For use cases requiring `@MainActor`-isolated execution. Returns `Task` handle for cancellation.
     *   `strataCollect(stream, action:)`: Detached stream iteration + `@MainActor` action per value.
-    *   `strataRunCatching { }`: Wraps async throwing block into `StrataResult`.
+    *   `strataRunCatching { }`: Wraps async throwing block into `StrataResult`. Does not throw — `CancellationError` becomes `.failure(StrataCancellationException)`.
+*   **Store-scoped work (preferred inside a `TrapezioStore`)**: `launch(work:reduce:)`, `launch(snapshot:work:reduce:)`, `launchMain(work:reduce:)`, `collect(_:action:)`, `cancelAll()`. These track their task in the store's `TrapezioTaskBag` and are cancelled when the store deallocates; the free `strata*` functions return untracked tasks the caller must own.
 
 ### 3. Data Flow
 ```mermaid
@@ -75,7 +90,7 @@ flowchart LR
         Event --> Store["🧠 Store<br/>(Logic)"]
         State --> View
     end
-
+    
     Store -->|UseCase| Logic["⚙️ Logic"]
 ```
 
@@ -83,10 +98,24 @@ flowchart LR
 
 ## 🛠 Tech Stack
 *   **Language**: Swift 5.9+ (Swift 6 Ready).
-*   **UI**: SwiftUI (Declarative).
+*   **UI**: SwiftUI (Declarative) with `@Observable` (iOS 17+ / macOS 14+). Observation is per-property: the runtime reads the whole `state` property, so any state change invalidates the view.
 *   **Architecture**: Trapezio (MVI/UDF), Strata (Clean Arch).
 *   **Persistence**: SwiftData / CoreData (wrapped in Actors).
 *   **Concurrency**: Swift Async/Await, Actors, `AsyncStream`. **No Combine** (legacy only).
+
+---
+
+## ✅ Verification
+
+| What | Command |
+|:---|:---|
+| Package build | `cd MESA && swift build` |
+| Package tests | `cd MESA && swift test --parallel` |
+| Sample app | `xcodebuild build -scheme Counter -destination 'platform=iOS Simulator,name=iPhone 17'` |
+| Sample app tests | `xcodebuild test -scheme Counter -destination 'platform=iOS Simulator,name=iPhone 17'` |
+
+`swift test` compiles for macOS only. CI additionally builds every library for
+`generic/platform=iOS` to verify the declared iOS minimum.
 
 ---
 
@@ -107,10 +136,16 @@ All features MUST implement these 5 components:
 1.  **Screen**: `TrapezioScreen` (`Hashable & Codable`) struct — route identity and parameters.
 2.  **State**: `TrapezioState` (`Equatable`) struct — immutable display data. `Equatable` enables `update()` to skip redundant publishes.
 3.  **Event**: `TrapezioEvent` enum — user intents (marker protocol, no requirements).
-4.  **Store**: `TrapezioStore<S, State, Event>` subclass — `@MainActor ObservableObject` logic owner. State is `nonisolated(unsafe)` for cross-isolation reads; `update()` calls `objectWillChange.send()` manually.
+4.  **Store**: `TrapezioStore<S, State, Event>` subclass — `@MainActor @Observable` logic owner. `state` is fully `@MainActor`-isolated; `update()` skips the write when the new state is equal, since assigning an equal value would still notify observers. Detached work must not read `state` directly — use `launch(snapshot:work:reduce:)`. `@Observable` covers `TrapezioStore` only; subclass stored properties are not tracked, by design.
 5.  **UI**: `TrapezioUI` conformance — stateless `map(state:onEvent:) -> some View`.
 
 **Wiring**: Use `TrapezioContainer(makeStore:ui:)` to preserve store identity across SwiftUI view updates. Internally calls `store.render(with: ui)` which creates `TrapezioRuntime`.
+
+`makeStore` is an `@autoclosure` — build the **entire** dependency graph inside it. Anything constructed in the surrounding factory body runs on every view evaluation and is discarded, which is expensive for repositories and database contexts.
+
+**Lifecycle**: Conform a store to `TrapezioLifecycle` for `onFirstAppear()` / `onAppear()` / `onDisappear()`, driven by `TrapezioRuntime`. Start observation in `onFirstAppear()`; consume navigation results in `onAppear()`.
+
+**Cancellation**: Every store owns a `TrapezioTaskBag` (`tasks`). Work started through the store's `launch`/`collect` is cancelled on deallocation. A task capturing its store **strongly** keeps it alive and defeats this — capture `[weak self]` in long-lived work.
 
 **Messages**: Use `TrapezioMessageManager` for transient user-facing messages (snackbars, alerts). Observe via `messagesSequence` (`AsyncStream`). Queue is capped at 10 messages — when a new message is pushed and the queue is full, the oldest message is dropped (FIFO) to make room; no error or back-pressure is emitted. `TrapezioMessage` can be created from a `String` or an `Error`.
 
@@ -130,7 +165,7 @@ Most concurrency primitives use `Task.detached` to guarantee work runs off the m
 | `strataLaunchInterop(work:reduce:catch:)` | Detached (cooperative pool) | `@MainActor` via `reduce`/`catch` | Routes `CancellationError()` to `catch` | `Task<Void, Never>` |
 | `strataLaunchMain(work:reduce:)` | `@MainActor` | `@MainActor` via `reduce` | Skips `reduce` | `Task<Void, Never>` |
 | `strataCollect(stream, action:)` | Detached (cooperative pool) | `@MainActor` via `action` per emission | — | `Task<Void, Never>` |
-| `strataRunCatching { }` | Inherits caller context | Same | Re-throws `CancellationError` | `StrataResult<T>` (throws) |
+| `strataRunCatching { }` | Inherits caller context | Same | Returns `.failure(StrataCancellationException)` | `StrataResult<T>` |
 
 All return `@discardableResult` — ignore for fire-and-forget, or store the `Task` handle for cancellation.
 
@@ -164,6 +199,7 @@ Year format: `2026` or `2026-<currentYear>`.
 
 ## 📂 Directory Structure
 ```text
+AGENTS.md                    # Canonical agent instructions (see "Instruction mirrors" below)
 MESA/                        # Swift Package
   ├── Package.swift
   ├── Sources/
@@ -172,8 +208,41 @@ MESA/                        # Swift Package
   │   ├── Strata/            # Clean Arch use case layer
   │   └── TrapezioTest/      # Test utilities (FakeTrapezioNavigator, TestEventSink, etc.)
   └── Tests/
-Counter/                     # Sample Xcode app
+Counter/                     # Sample Xcode app (iOS 17+, uses SwiftData)
+docs/                        # Architecture review and long-form notes
+.claude/skills/              # Repository skills (see below)
 ```
+
+### Instruction mirrors
+`AGENTS.md` is the source of truth. `CLAUDE.md`, `GEMINI.md`, `.junie/guidelines.md`, and
+`.github/copilot-instructions.md` are **byte-identical copies**. Edit `AGENTS.md`, then:
+
+```bash
+for m in CLAUDE.md GEMINI.md .junie/guidelines.md .github/copilot-instructions.md; do
+  cp AGENTS.md "$m"
+done
+```
+
+The `Agent instructions in sync` CI job fails the build when they diverge.
+
+### Skills
+Repository skills live in `.claude/skills/`. Prefer them over ad-hoc scaffolding — they encode
+the conventions in this document:
+
+| Skill | Purpose |
+|:---|:---|
+| `add-feature` | Scaffold a feature module (Domain / Data / Presentation) |
+| `add-screen` | Add a Screen + State + Event + Store + UI + Factory |
+| `add-interactor` | Scaffold a `StrataInteractor` or `StrataSubjectInteractor` with fake and test |
+| `add-tests` | Add or extend coverage for changed files |
+| `review` | Quick diff review |
+| `prepare-pr` | Pre-merge audit |
+| `security-check` | Security-focused pass |
+| `fix` | Targeted fix for a build error, crash, or failing test |
+| `bump-version` | Update `VERSION` and release metadata |
+
+When library API changes, update the skills in the same change — a stale skill generates code
+against the old API.
 
 ### Feature Directory Example
 ```text
@@ -197,23 +266,23 @@ graph LR
     Screen --> UI_View[View]
     UI_View --> Store
     end
-
+    
     subgraph Domain
     UseCase --> Repo[Repository Protocol]
     end
-
+    
     subgraph Data
     RepoImpl[Repository Impl] -.->|Implements| Repo
     RepoImpl --> SwiftData
     end
-
+    
     Store --> UseCase
 ```
 
 ### Navigation (`TrapezioNavigation`)
 *   **`TrapezioNavigationHost`**: SwiftUI host owning a `NavigationStack`. Accepts a root `TrapezioScreen` and a builder closure `(screen, navigator, interop) -> View`.
 *   **`TrapezioNavigator`**: `@MainActor` protocol for navigation requests:
-    *   `goTo(_ screen:)` — push a screen.
+    *   `goTo(_ screen:)` — push a screen. Ignored when that screen is already on top of the stack, so a double tap cannot push twice.
     *   `dismiss()` — pop the current screen.
     *   `dismissToRoot()` — pop to root.
     *   `dismissTo(_ screen:)` — pop back to a specific screen.
@@ -224,4 +293,4 @@ graph LR
     *   **Storage scope**: Per navigation stack — each `TrapezioNavigationHost` owns its own `TrapezioNavigator` with an independent keyed result dictionary.
     *   **Lifecycle**: Results persist in the navigator until consumed or explicitly cleared. `consumeResult` is single-consumption (removes the entry on read; a second call returns `nil`). `consumeResult(forKey:as:)` restores the entry on type mismatch so a subsequent call with the correct type still succeeds. `dismissToRoot()` calls `clearResults()` automatically; `dismiss()` and `dismissTo(_:)` do not. Unconsumed results are never cleared by a timeout — callers must consume or clear them.
     *   **Thread safety**: `TrapezioNavigator` is `@MainActor`-isolated, so `popWithResult` (store + dismiss) and `consumeResult` are serialized on the main thread with no additional locking needed.
-*   **`TrapezioInterop`**: Protocol for feature-to-app-shell communication (`send(_ event:)`). Use `ClosureTrapezioInterop` for closure-based handling.
+*   **`TrapezioInterop`**: `@MainActor` protocol for feature-to-app-shell communication (`send(_ event:)`), matching `TrapezioNavigator`'s isolation. Use `ClosureTrapezioInterop` for closure-based handling.

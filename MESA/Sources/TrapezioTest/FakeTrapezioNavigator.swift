@@ -41,44 +41,57 @@ public final class FakeTrapezioNavigator: TrapezioNavigator {
     /// Stored results from popWithResult calls.
     public private(set) var results: [String: any TrapezioNavigationResult] = [:]
 
-    private var continuation: AsyncStream<NavigationEvent>.Continuation?
+    private let continuation: AsyncStream<NavigationEvent>.Continuation
 
     /// Async event stream for await-style assertions.
-    public private(set) lazy var eventStream: AsyncStream<NavigationEvent> = {
-        AsyncStream { self.continuation = $0 }
-    }()
+    ///
+    /// Created in `init` rather than lazily, so events recorded before the first read are still
+    /// delivered, and finished on deallocation so an `await` loop terminates instead of parking
+    /// forever. Buffering is `.bufferingNewest(256)` — generous enough for a test, bounded enough
+    /// that an unread stream cannot grow without limit.
+    public let eventStream: AsyncStream<NavigationEvent>
 
-    public init() {}
+    public init() {
+        var captured: AsyncStream<NavigationEvent>.Continuation!
+        eventStream = AsyncStream<NavigationEvent>(bufferingPolicy: .bufferingNewest(256)) { cont in
+            captured = cont
+        }
+        continuation = captured
+    }
+
+    deinit {
+        continuation.finish()
+    }
 
     public func goTo(_ screen: any TrapezioScreen) {
         let event = NavigationEvent.navigate(screen: AnyHashable(screen))
         events.append(event)
-        continuation?.yield(event)
+        continuation.yield(event)
     }
 
     public func dismiss() {
         let event = NavigationEvent.dismiss
         events.append(event)
-        continuation?.yield(event)
+        continuation.yield(event)
     }
 
     public func dismissToRoot() {
         let event = NavigationEvent.dismissToRoot
         events.append(event)
-        continuation?.yield(event)
+        continuation.yield(event)
     }
 
     public func dismissTo(_ screen: any TrapezioScreen) {
         let event = NavigationEvent.dismissTo(screen: AnyHashable(screen))
         events.append(event)
-        continuation?.yield(event)
+        continuation.yield(event)
     }
 
     public func popWithResult<R: TrapezioNavigationResult>(key: String, result: R) {
         results[key] = result
         let event = NavigationEvent.popWithResult(key: key)
         events.append(event)
-        continuation?.yield(event)
+        continuation.yield(event)
     }
 
     public func consumeResult(forKey key: String) -> (any TrapezioNavigationResult)? {

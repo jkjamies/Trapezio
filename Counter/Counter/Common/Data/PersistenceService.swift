@@ -16,23 +16,59 @@
 
 import SwiftData
 import Foundation
+import os
 
-@available(iOS 17, *)
-public class PersistenceService {
+private let logger = Logger(subsystem: "Counter", category: "Persistence")
+
+public final class PersistenceService {
     public static let shared = PersistenceService()
-    
+
     public let container: ModelContainer
-    
+
+    /// `true` when the on-disk store could not be opened and an in-memory fallback is in use.
+    /// Surface this in the UI if losing data between launches would matter to the user.
+    public let isEphemeral: Bool
+
     private init() {
         let schema = Schema([
             MESAModel.self,
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        // Application Support is not guaranteed to exist on iOS, and SwiftData will not create
+        // intermediate directories for an explicit store URL — without this the container fails
+        // to open and we silently fall back to in-memory.
+        let directory = URL.applicationSupportDirectory
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let storeURL = directory.appending(path: "MESA.store")
 
         do {
-            container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            container = try ModelContainer(
+                for: schema,
+                configurations: [ModelConfiguration(schema: schema, url: storeURL)]
+            )
+            isEphemeral = false
+            Self.applyFileProtection(to: storeURL)
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // A failed migration, a corrupt store, or a full disk should not take the app down
+            // with it. Degrade to in-memory so the user can keep working, and record that we did.
+            logger.error("Falling back to an in-memory store: \(error.localizedDescription)")
+            container = try! ModelContainer(
+                for: schema,
+                configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
+            )
+            isEphemeral = true
+        }
+    }
+
+    /// Restricts the store to times the device is unlocked, or was unlocked when the file was
+    /// opened. SwiftData applies no protection class of its own.
+    private static func applyFileProtection(to url: URL) {
+        do {
+            try FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.completeUnlessOpen],
+                ofItemAtPath: url.path
+            )
+        } catch {
+            logger.warning("Could not set file protection on the store: \(error.localizedDescription)")
         }
     }
 }

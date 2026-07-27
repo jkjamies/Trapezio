@@ -74,7 +74,7 @@ import TrapezioNavigation
 import Strata
 
 @MainActor
-final class <ScreenName>Store: TrapezioStore<<ScreenName>Screen, <ScreenName>State, <ScreenName>Event> {
+final class <ScreenName>Store: TrapezioStore<<ScreenName>Screen, <ScreenName>State, <ScreenName>Event>, TrapezioLifecycle {
     private let navigator: (any TrapezioNavigator)?
     // injected dependencies
 
@@ -85,16 +85,30 @@ final class <ScreenName>Store: TrapezioStore<<ScreenName>Screen, <ScreenName>Sta
     ) {
         self.navigator = navigator
         super.init(screen: screen, initialState: <ScreenName>State(/* initial values */))
-        setupBindings()
     }
 
-    private func setupBindings() {
-        // strataCollect streams here
+    // Observation starts on first appearance, not in `init`. `collect` tracks the task in the
+    // store's TrapezioTaskBag, so it is cancelled when the store deallocates.
+    func onFirstAppear() {
+        // collect(useCase.stream) { [weak self] value in self?.update { $0.field = value } }
+        // Subscribe before triggering — `stream` broadcasts live emissions and does not replay.
+    }
+
+    // Consume navigation results here: onAppear also fires when this screen is revealed by a pop.
+    func onAppear() {
+        // if let result = navigator?.consumeResult(forKey: "key", as: SomeResult.self) { ... }
     }
 
     override func handle(event: <ScreenName>Event) {
         switch event {
         // handle events
+        //
+        // Detached work cannot read `state`. Snapshot it on the main actor first:
+        // launch(
+        //     snapshot: { $0.field },
+        //     work: { value in await useCase.execute(params: value) },
+        //     reduce: { [weak self] result in self?.update { $0.other = result.getOrNull() } }
+        // )
         }
     }
 }
@@ -110,7 +124,7 @@ import Trapezio
 
 struct <ScreenName>UI: TrapezioUI {
     func map(state: <ScreenName>State, onEvent: @escaping @MainActor (<ScreenName>Event) -> Void) -> some View {
-        // stateless composable — no @State, @StateObject, or side effects
+        // stateless composable — no @State, no side effects, no business logic
     }
 }
 ```
@@ -125,19 +139,34 @@ import Trapezio
 import TrapezioNavigation
 
 struct <ScreenName>Factory {
-    @ViewBuilder @MainActor
+    @MainActor
     static func make(screen: <ScreenName>Screen, navigator: (any TrapezioNavigator)?, interop: (any TrapezioInterop)?) -> some View {
-        // assemble dependencies
         TrapezioContainer(
-            makeStore: <ScreenName>Store(
-                screen: screen,
-                navigator: navigator
-                // pass dependencies
-            ),
+            makeStore: {
+                // Assemble the ENTIRE graph inside the autoclosure. Anything built in the
+                // surrounding body runs on every view evaluation and is then discarded —
+                // expensive for repositories, ModelContexts, and network clients.
+                let repository = <FeatureName>RepositoryImpl(/* ... */)
+                return <ScreenName>Store(
+                    screen: screen,
+                    navigator: navigator,
+                    useCase: <Something>UseCase(repository: repository)
+                )
+            }(),
             ui: <ScreenName>UI()
         )
     }
 }
+```
+
+If the store has no dependencies to assemble, the shorter form is fine — the autoclosure still
+defers construction:
+
+```swift
+TrapezioContainer(
+    makeStore: <ScreenName>Store(screen: screen, navigator: navigator),
+    ui: <ScreenName>UI()
+)
 ```
 
 ---

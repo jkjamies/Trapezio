@@ -22,6 +22,11 @@ Extract:
   - No flag → `StrataInteractor` (one-shot async, returns `StrataResult<R>`)
   - `--observe` → `StrataSubjectInteractor` (stream, exposes `AsyncStream<T>` via `.stream`)
 
+`createObservable(params:)` is the method you **override**, never the one you call. Consumers
+trigger with `callAsFunction(_:)` and read `.stream`; calling `createObservable` directly bypasses
+re-trigger cancellation and the `value` cache. `.stream` broadcasts to every subscriber and does
+not replay, so subscribe before triggering.
+
 Verify the feature module exists at `<AppTarget>/<FeatureName>/`. If it doesn't exist, **stop and ask the user** whether they intended a different feature name or whether they need to create the feature first with `/add-feature`. Do not proceed until the feature exists.
 
 ---

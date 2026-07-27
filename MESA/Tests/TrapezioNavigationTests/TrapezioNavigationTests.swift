@@ -43,6 +43,37 @@ struct TrapezioStackNavigatorTests {
         #expect(nav.path.count == 3)
     }
 
+    @Test("goTo ignores a screen already on top of the stack")
+    @MainActor func goToIgnoresDuplicateTop() {
+        let nav = TrapezioStackNavigator(root: FakeScreenA(), onInterop: nil)
+
+        nav.goTo(FakeScreenB())
+        nav.goTo(FakeScreenB())
+
+        #expect(nav.path.count == 1)
+    }
+
+    @Test("goTo allows the same screen again from a deeper position")
+    @MainActor func goToAllowsNonAdjacentRepeat() {
+        let nav = TrapezioStackNavigator(root: FakeScreenA(), onInterop: nil)
+
+        nav.goTo(FakeScreenB())
+        nav.goTo(FakeScreenC(id: 1))
+        nav.goTo(FakeScreenB())
+
+        #expect(nav.path.count == 3)
+    }
+
+    @Test("goTo treats screens differing only in parameters as distinct")
+    @MainActor func goToDistinguishesByParameters() {
+        let nav = TrapezioStackNavigator(root: FakeScreenA(), onInterop: nil)
+
+        nav.goTo(FakeScreenC(id: 1))
+        nav.goTo(FakeScreenC(id: 2))
+
+        #expect(nav.path.count == 2)
+    }
+
     @Test("dismiss pops last screen")
     @MainActor func dismiss() {
         let nav = TrapezioStackNavigator(root: FakeScreenA(), onInterop: nil)
@@ -267,5 +298,38 @@ struct TrapezioStackNavigatorTests {
 
         #expect(nav.consumeResult(forKey: "key_a") == nil)
         #expect(nav.consumeResult(forKey: "key_b") == nil)
+    }
+}
+
+// MARK: - TrapezioAnyScreen
+
+@Suite("TrapezioAnyScreen")
+struct TrapezioAnyScreenTests {
+
+    @Test("two wrappers of an equal screen are distinct path entries")
+    func distinctIdentityPerWrap() {
+        let first = TrapezioAnyScreen(FakeScreenB())
+        let second = TrapezioAnyScreen(FakeScreenB())
+
+        // Identity is per-entry, so the same route can legitimately sit at several depths.
+        // This is also why the path itself cannot dedupe, and why `goTo` guards the top instead.
+        #expect(first != second)
+        #expect(first.hashValue != second.hashValue)
+    }
+
+    @Test("a wrapper equals itself")
+    func reflexiveEquality() {
+        let screen = TrapezioAnyScreen(FakeScreenB())
+        let copy = screen
+
+        #expect(screen == copy)
+        #expect(screen.hashValue == copy.hashValue)
+    }
+
+    @Test("the wrapped screen is preserved")
+    func preservesBase() {
+        let wrapped = TrapezioAnyScreen(FakeScreenC(id: 7))
+
+        #expect(AnyHashable(wrapped.base) == AnyHashable(FakeScreenC(id: 7)))
     }
 }

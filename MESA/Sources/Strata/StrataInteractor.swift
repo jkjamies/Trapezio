@@ -26,54 +26,95 @@ public let strataInteractorDefaultTimeout: TimeInterval = 300
 /// Subclasses override `doWork(params:)` to implement business logic.
 /// The `inProgress` state is automatically managed during execution.
 open class StrataInteractor<P: Sendable, T: Sendable>: @unchecked Sendable {
-    
+
     // MARK: - inProgress State
-    
-    private let _inProgress = OSAllocatedUnfairLock<Bool>(initialState: false)
-    
-    /// Current loading state (thread-safe).
-    public var inProgress: Bool {
-        _inProgress.withLock { $0 }
+
+    /// Loading state and its stream continuation, kept under one lock.
+    ///
+    /// The two must be updated together: publishing a transition means reading the
+    /// continuation, and a separate unsynchronised `var` for it would race `onTermination`
+    /// (which fires on an arbitrary thread when a consumer stops iterating).
+    private struct ProgressState {
+        /// Number of `execute` calls currently running. Interactors are commonly injected as
+        /// shared singletons, so concurrent execution must not flip the flag off early.
+        var activeCount: Int = 0
+        var continuation: AsyncStream<Bool>.Continuation?
     }
-    
-    private var inProgressContinuation: AsyncStream<Bool>.Continuation?
-    
+
+    private let progress = OSAllocatedUnfairLock<ProgressState>(initialState: ProgressState())
+
+    /// Current loading state (thread-safe).
+    ///
+    /// `true` while at least one ``execute(params:timeout:)`` call is in flight.
+    public var inProgress: Bool {
+        progress.withLock { $0.activeCount > 0 }
+    }
+
     /// Stream for observing loading state changes.
     ///
-    /// Emits the current value immediately upon subscription, then emits on every
-    /// ``execute(params:)`` start/finish. Only one stream is created per interactor instance.
+    /// Emits the current value immediately upon subscription, then emits when execution starts
+    /// and when the last concurrent execution finishes. Created once, in `init`.
     ///
     /// - Important: `AsyncStream` is single-consumer. Only one `for await` loop should iterate
     ///   this stream. A second consumer on the same stream will receive no values. If you need
     ///   multiple observers, collect this stream once and fan out from the reducer.
-    public private(set) lazy var inProgressStream: AsyncStream<Bool> = {
-        AsyncStream { [weak self] continuation in
-            self?.inProgressContinuation = continuation
-            // Emit initial state
-            continuation.yield(self?.inProgress ?? false)
-            continuation.onTermination = { [weak self] _ in
-                self?.inProgressContinuation = nil
-            }
-        }
-    }()
-    
-    private func setInProgress(_ value: Bool) {
-        _inProgress.withLock { $0 = value }
-        inProgressContinuation?.yield(value)
-    }
-    
+    /// - Note: Buffering is `.bufferingNewest(1)` — a slow consumer sees the current state
+    ///   rather than every transition, and an unconsumed stream cannot grow without bound.
+    public let inProgressStream: AsyncStream<Bool>
+
     // MARK: - Initialization
-    
-    public init() {}
-    
+
+    public init() {
+        var builder: AsyncStream<Bool>.Continuation!
+        // The build closure is non-escaping and runs synchronously, so `builder` is set
+        // before the initializer returns.
+        inProgressStream = AsyncStream<Bool>(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            builder = continuation
+        }
+        // Bind to a `let` before touching the lock: `withLock` takes a `@Sendable` closure, and
+        // Swift 6 rejects capturing a mutable local in one.
+        let continuation = builder!
+        progress.withLock { $0.continuation = continuation }
+        continuation.yield(false)
+    }
+
+    deinit {
+        // Let consumers' `for await` loops terminate instead of parking forever.
+        let continuation = progress.withLock { state -> AsyncStream<Bool>.Continuation? in
+            let value = state.continuation
+            state.continuation = nil
+            return value
+        }
+        continuation?.finish()
+    }
+
+    /// Increments the active count, publishing `true` on the leading edge.
+    private func beginWork() {
+        let continuation = progress.withLock { state -> AsyncStream<Bool>.Continuation? in
+            state.activeCount += 1
+            return state.activeCount == 1 ? state.continuation : nil
+        }
+        // Yield outside the lock: a consumer reacting synchronously must not re-enter it.
+        continuation?.yield(true)
+    }
+
+    /// Decrements the active count, publishing `false` on the trailing edge.
+    private func endWork() {
+        let continuation = progress.withLock { state -> AsyncStream<Bool>.Continuation? in
+            state.activeCount = max(0, state.activeCount - 1)
+            return state.activeCount == 0 ? state.continuation : nil
+        }
+        continuation?.yield(false)
+    }
+
     // MARK: - Execution
-    
+
     /// Override this method to implement business logic.
     /// Do NOT call this directly — use `execute(params:)`.
     open func doWork(params: P) async -> StrataResult<T> {
         fatalError("doWork(params:) must be overridden")
     }
-    
+
     /// Default timeout for interactor execution (5 minutes).
     public static var defaultTimeout: TimeInterval { strataInteractorDefaultTimeout }
 
@@ -83,12 +124,19 @@ open class StrataInteractor<P: Sendable, T: Sendable>: @unchecked Sendable {
     ///   - params: The input parameters.
     ///   - timeout: Maximum execution time. Defaults to ``defaultTimeout`` (5 minutes).
     /// - Returns: A `StrataResult` containing the result or a timeout/execution failure.
+    ///
+    /// - Important: The timeout is a **cancellation signal, not a hard deadline**. When it
+    ///   fires, the `doWork` task is cancelled — but `execute` cannot return until that task
+    ///   actually finishes, because it is a child task of the same group. `doWork`
+    ///   implementations that ignore cooperative cancellation (a tight synchronous loop, a
+    ///   blocking C call, a network request with no cancellation wiring) will therefore run past
+    ///   the timeout and hold the caller. Check `Task.isCancelled` in long-running work.
     public final func execute(
         params: P,
         timeout: TimeInterval = strataInteractorDefaultTimeout
     ) async -> StrataResult<T> {
-        setInProgress(true)
-        defer { setInProgress(false) }
+        beginWork()
+        defer { endWork() }
 
         do {
             return try await withThrowingTaskGroup(of: StrataResult<T>?.self) { group in
@@ -118,12 +166,12 @@ open class StrataInteractor<P: Sendable, T: Sendable>: @unchecked Sendable {
             return .failure(StrataExecutionException(error: error))
         }
     }
-    
+
     /// Helper to bridge throws to StrataResult in doWork implementations.
     ///
-    /// Delegates to ``strataRunCatching(_:)`` so that `CancellationError` is mapped to
-    /// `StrataCancellationException`, `StrataException` is preserved, and all other errors
-    /// are wrapped in `StrataExecutionException`.
+    /// Delegates to ``strataRunCatching(_:)``, so `CancellationError` becomes
+    /// `.failure(StrataCancellationException)`, `StrataException` is preserved as-is, and every
+    /// other error is wrapped in `StrataExecutionException`. Nothing is re-thrown.
     public func executeCatching(params: P, block: (P) async throws -> T) async -> StrataResult<T> {
         await strataRunCatching { try await block(params) }
     }
@@ -133,8 +181,10 @@ open class StrataInteractor<P: Sendable, T: Sendable>: @unchecked Sendable {
 
 /// Wraps an async block in a `StrataResult`, catching any errors.
 ///
-/// `CancellationError` is mapped to `.failure(StrataCancellationException)` so that
-/// cancellation is represented uniformly inside `StrataResult` without throwing.
+/// This function does not throw. `CancellationError` is mapped to
+/// `.failure(StrataCancellationException)` so that cancellation is represented uniformly inside
+/// `StrataResult` alongside every other failure — callers pattern-match one type instead of
+/// mixing `try` with result handling.
 public func strataRunCatching<T>(_ block: () async throws -> T) async -> StrataResult<T> {
     do {
         let result = try await block()
@@ -150,9 +200,9 @@ public func strataRunCatching<T>(_ block: () async throws -> T) async -> StrataR
 
 /// Wraps an unexpected (non-`StrataException`) error caught during interactor execution.
 ///
-/// Stores a Sendable snapshot of the original error (description and type name)
-/// for inspection while conforming to `StrataException` for uniform error handling
-/// in `StrataResult` chains.
+/// Stores a `Sendable` snapshot of the original error (its `localizedDescription`, type name,
+/// and debug description) rather than the error itself, so the failure can cross isolation
+/// boundaries inside a `StrataResult`.
 public struct StrataExecutionException: StrataException {
     public let message: String
     public let underlyingErrorType: String

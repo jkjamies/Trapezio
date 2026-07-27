@@ -60,12 +60,40 @@ final class CounterStoreTests: XCTestCase {
 
     func test_divideByTwo_isInstantAndDeterministic() async throws {
         store.handle(event: .divideByTwo)
-        // strataLaunch uses Task.detached, so we need to wait for both the
-        // detached work and the MainActor.run { reduce } hop to complete.
+        // The store's launch runs work detached, so we wait for both the detached work and the
+        // MainActor hop back into reduce.
         try await Task.sleep(nanoseconds: 10_000_000) // 10ms
         XCTAssertEqual(store.state.count, 5, "The count should be divided by 2 instantly using the fake.")
     }
     
+    /// `onFirstAppear` is what the runtime calls from the view; a headless test calls it directly.
+    func test_onFirstAppear_bindsMessageQueue() async throws {
+        store.onFirstAppear()
+        try await Task.sleep(nanoseconds: 50_000_000) // let the collect task subscribe
+
+        store.handle(event: .throwError)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(store.state.message?.message, "Simulated Failure")
+
+        guard let id = store.state.message?.id else {
+            XCTFail("Expected a message to be bound into state")
+            return
+        }
+        store.handle(event: .clearError(id: id))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertNil(store.state.message)
+    }
+
+    /// The binding must not start in `init` — a store built but never shown should stay inert.
+    func test_messagesAreNotBoundBeforeFirstAppear() async throws {
+        store.handle(event: .throwError)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertNil(store.state.message)
+    }
+
     func test_requestHelp_sendsInteropEvent() {
         store.handle(event: .requestHelp)
         

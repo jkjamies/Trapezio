@@ -25,6 +25,12 @@ import Foundation
 /// After `work` completes, `Task.isCancelled` is checked. If the task was cancelled during execution,
 /// `reduce` is skipped entirely — preventing stale results from being applied to state.
 ///
+/// - Important: Inside a `TrapezioStore`, prefer the store's own `launch(...)` — it tracks the
+///   returned task and cancels it when the store deallocates. This free function returns an
+///   untracked task, so the caller owns its lifetime. Note also that `work` runs off the main
+///   actor and therefore must not read store state directly; capture the values it needs first,
+///   or use the store's `launch(snapshot:work:reduce:)`.
+///
 /// ```swift
 /// // With interactor
 /// let count = state.count
@@ -144,6 +150,10 @@ public func strataLaunchWithResult<T: Sendable>(
 /// Stream iteration runs in a detached task — completely off the main thread.
 /// `action` is called on the `@MainActor` for each emitted value, guaranteeing all UI state
 /// updates happen on the main thread.
+///
+/// - Important: Inside a `TrapezioStore`, prefer the store's own `collect(_:action:)` — it tracks
+///   the returned task and cancels it when the store deallocates. An untracked collect on a stream
+///   that never finishes parks a task for the lifetime of the process.
 ///
 /// ```swift
 /// strataCollect(observeUseCase.stream) { value in

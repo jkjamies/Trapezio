@@ -75,12 +75,14 @@ struct TrapezioStoreTestExtensionTests {
 
         store.handle(event: .asyncIncrement)
 
-        await store.awaitState(
+        let satisfied = await store.awaitState(
             until: { $0.count > 0 },
             validate: { state in
                 #expect(state.count == 1)
             }
         )
+
+        #expect(satisfied)
     }
 
     @Test("awaitState() returns immediately when predicate already satisfied")
@@ -99,12 +101,15 @@ struct TrapezioStoreTestExtensionTests {
     @MainActor func awaitStateTimeout() async {
         let store = TestStore(screen: TestScreen(), initialState: TestState())
 
-        await store.awaitState(
+        let satisfied = await store.awaitState(
             timeout: 0.1,
             until: { $0.count == 999 },
             validate: { state in
                 #expect(state.count == 0)
             }
         )
+
+        // The distinguishing signal: validation ran, but the condition never held.
+        #expect(!satisfied)
     }
 }

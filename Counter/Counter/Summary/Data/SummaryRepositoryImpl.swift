@@ -32,9 +32,14 @@ public actor SummaryRepositoryImpl: SummaryRepository, ModelActor {
     
     public func saveValue(_ value: Int) async throws {
         let context = self.modelContext
-        let descriptor = FetchDescriptor<MESAModel>()
+        // Sorted to match `fetchCurrentValueSafe`, so read and write always agree on which row
+        // is "current" when the store holds more than one.
+        var descriptor = FetchDescriptor<MESAModel>(
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
         let existing = try context.fetch(descriptor)
-        
+
         if let first = existing.first {
             first.lastSavedValue = value
             first.timestamp = Date()
@@ -48,8 +53,17 @@ public actor SummaryRepositoryImpl: SummaryRepository, ModelActor {
     }
     
     private func notifyObservers() {
-        for (_, continuation) in observers {
-            continuation.yield(())
+        // Drop continuations whose consumer has gone away. `onTermination` normally handles
+        // this, but pruning on yield means a missed termination cannot accumulate observers —
+        // each stale entry would otherwise cost a redundant fetch on every save.
+        var stale: [UUID] = []
+        for (id, continuation) in observers {
+            if case .terminated = continuation.yield(()) {
+                stale.append(id)
+            }
+        }
+        for id in stale {
+            observers.removeValue(forKey: id)
         }
     }
     

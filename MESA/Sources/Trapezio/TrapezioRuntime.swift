@@ -16,23 +16,45 @@
 
 import SwiftUI
 
+/// Binds a store to its UI and drives ``TrapezioLifecycle`` from the hosting view.
+///
+/// The store needs no property wrapper: reading `presenter.state` during `body` is enough for
+/// `@Observable` to register the dependency. That dependency is on the whole `state` property —
+/// not on the individual fields the UI reads — so any state change invalidates this view.
+///
+/// Generic parameters are suffixed `Type` so that `State` unambiguously means `SwiftUI.State`
+/// inside this declaration.
 @MainActor
-internal struct TrapezioRuntime<S, State, Event, Store, UI>: View
-where S: TrapezioScreen, State: TrapezioState, Event: TrapezioEvent,
-      Store: TrapezioStore<S, State, Event>, UI: TrapezioUI,
-      UI.State == State, UI.Event == Event {
+internal struct TrapezioRuntime<ScreenType, StateType, EventType, Store, UI>: View
+where ScreenType: TrapezioScreen, StateType: TrapezioState, EventType: TrapezioEvent,
+      Store: TrapezioStore<ScreenType, StateType, EventType>, UI: TrapezioUI,
+      UI.State == StateType, UI.Event == EventType {
 
-    @ObservedObject var presenter: Store
+    private let presenter: Store
     private let ui: UI
-    
+
+    /// Whether `onFirstAppear` has already been delivered for this view identity.
+    @State private var hasAppeared = false
+
     internal init(presenter: Store, ui: UI) {
         self.presenter = presenter
         self.ui = ui
     }
-    
-    public var body: some View {
+
+    internal var body: some View {
         ui.map(state: presenter.state) { event in
             presenter.handle(event: event)
+        }
+        .onAppear {
+            guard let lifecycle = presenter as? any TrapezioLifecycle else { return }
+            if !hasAppeared {
+                hasAppeared = true
+                lifecycle.onFirstAppear()
+            }
+            lifecycle.onAppear()
+        }
+        .onDisappear {
+            (presenter as? any TrapezioLifecycle)?.onDisappear()
         }
     }
 }

@@ -24,6 +24,10 @@ public protocol TrapezioNavigator: AnyObject {
     // MARK: - Navigation
 
     /// Requests navigation to a strongly-typed TrapezioScreen.
+    ///
+    /// - Note: The stack-backed implementation ignores a push whose screen is already on top of
+    ///   the stack, so a double tap cannot enqueue the destination twice. Pushing the same route
+    ///   again from a deeper screen still works.
     func goTo(_ screen: any TrapezioScreen)
 
     // MARK: - Dismissal
