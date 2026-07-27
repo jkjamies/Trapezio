@@ -47,6 +47,9 @@
 				CounterTests/DivideUseCaseTests.swift,
 				CounterTests/Fakes/FakeDivideUseCase.swift,
 				CounterTests/Fakes/FakeInterop.swift,
+				CounterTests/Fakes/FakeSummaryRepository.swift,
+				CounterTests/SummaryStoreTests.swift,
+				CounterTests/TrapezioHostTests.swift,
 				CounterUITests/CounterUITests.swift,
 			);
 			target = 2D4544072F12F2C4007AE19F /* Counter */;
@@ -58,6 +61,9 @@
 				CounterTests/DivideUseCaseTests.swift,
 				CounterTests/Fakes/FakeDivideUseCase.swift,
 				CounterTests/Fakes/FakeInterop.swift,
+				CounterTests/Fakes/FakeSummaryRepository.swift,
+				CounterTests/SummaryStoreTests.swift,
+				CounterTests/TrapezioHostTests.swift,
 			);
 			target = 2D4544142F12F2C5007AE19F /* CounterTests */;
 		};

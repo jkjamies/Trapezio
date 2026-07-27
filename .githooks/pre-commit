@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#
+# Enable with:  git config core.hooksPath .githooks
+#
+# Fails the commit when the agent instruction mirrors have drifted from AGENTS.md.
+# CI enforces the same rule, but only after a push.
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+if ! "$repo_root/scripts/sync-agent-docs.sh" --check; then
+  echo
+  echo "Agent instruction mirrors are out of sync. Fix and re-stage:" >&2
+  echo "  scripts/sync-agent-docs.sh" >&2
+  echo "  git add AGENTS.md CLAUDE.md GEMINI.md .junie/guidelines.md .github/copilot-instructions.md" >&2
+  exit 1
+fi

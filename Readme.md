@@ -53,7 +53,9 @@ flowchart LR
 | iOS | 17.0 |
 | macOS | 14.0 |
 
-Trapezio uses the `@Observable` macro, so SwiftUI tracks state reads at **property granularity** — a view reading only `state.count` is not invalidated when an unrelated field changes. This is why the floor is iOS 17; `ObservableObject` invalidated on every published change regardless of what a view actually read.
+Trapezio uses the `@Observable` macro, which is why the floor is iOS 17.
+
+Be precise about what that buys: `TrapezioRuntime` reads `store.state` — a single tracked property holding the whole `State` struct — so **any** change to state invalidates the view, exactly as `ObservableObject` did. Observation is per-property, not per-field, and a UDF store has one state property by design. The gains are that `update(_:)` no longer hand-writes `objectWillChange.send()`, the runtime needs no property wrapper, and members marked `@ObservationIgnored` (`screen`, `tasks`) never invalidate anything.
 
 > **Upgrading from 0.2.x?** The minimum deployment target moved from iOS 16 / macOS 13. See [Migrating to 0.3.0](#-migrating-to-030).
 
@@ -238,7 +240,7 @@ struct CounterFactory {
 }
 ```
 
-> **`makeStore` is an `@autoclosure`.** Store construction is deferred to `@StateObject` and happens once — but only for what is written *inside* it. Dependencies built in the surrounding factory body run on every view evaluation and are then discarded, which is expensive for repositories, database contexts, and network clients:
+> **`makeStore` is an `@autoclosure`.** Store construction is deferred and happens once — but only for what is written *inside* it. Dependencies built in the surrounding factory body run on every view evaluation and are then discarded, which is expensive for repositories, database contexts, and network clients:
 >
 > ```swift
 > // Wrong — a new repository (and ModelContext) per render.

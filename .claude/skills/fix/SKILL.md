@@ -64,7 +64,8 @@ Identify the root cause. Common categories:
 - State not updated correctly via `update { }`
 - Event not handled in `switch` block
 - Navigation called with wrong screen/args
-- `strataLaunch` capturing stale state
+- Detached work reading `state` instead of taking a snapshot via `launch(snapshot:work:reduce:)`
+- Observation started in `init` rather than `TrapezioLifecycle.onFirstAppear()`, so it is not scoped to the view
 
 ---
 
@@ -81,7 +82,7 @@ If the fix requires changes across multiple files (e.g., a renamed protocol), up
 After applying the fix:
 - If it was a **build error:** Run `cd MESA && swift build` to verify it compiles
 - If it was a **test failure:** Run `cd MESA && swift test --parallel` to verify it passes
-- If it was a **Counter app error:** Run `xcodebuild build -scheme Counter -destination 'platform=iOS Simulator,name=iPhone 16'`
+- If it was a **Counter app error:** Run `xcodebuild build -scheme Counter -destination 'platform=iOS Simulator,name=iPhone 17'`
 - If it was a **runtime crash or logic bug:** Verify the fix compiles and explain what changed
 
 Report what was wrong and what was changed.

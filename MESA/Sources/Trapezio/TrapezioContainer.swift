@@ -25,7 +25,10 @@ import SwiftUI
 /// lazily inside it on first use.
 ///
 /// Only ever touched from `body`, which is `@MainActor`.
-private final class TrapezioStoreBox<Store: AnyObject>: @unchecked Sendable {
+///
+/// `internal` rather than `private` so the resolve-once guarantee can be tested directly — it is
+/// the thing standing between adopters and a rebuilt dependency graph on every render.
+internal final class TrapezioStoreBox<Store: AnyObject>: @unchecked Sendable {
     private var stored: Store?
 
     func resolve(_ make: () -> Store) -> Store {

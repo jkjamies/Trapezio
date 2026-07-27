@@ -39,7 +39,11 @@ stays in place for it.
 | S4-5, S4-6 · SwiftData template | Fixed — protection class set, in-memory fallback |
 | S4-7 · no `SECURITY.md` | Fixed |
 | S4-8 · no DI story | **Open** — pairs with the deep-link registry |
-| S4-9 … S4-12, sample polish | Fixed except SwiftUI-layer view tests |
+| S4-9 · no SwiftUI-layer tests | Fixed — unit, hosted, and end-to-end |
+| S4-10, S4-11 · weak test assertions | Fixed |
+| S4-12 · repo furniture | Fixed — CHANGELOG, CONTRIBUTING, pinned language mode, sync script + hook |
+| Sample-app polish | Fixed |
+| S3-9 · skills generate against the old API | Fixed — all nine updated (missed in the original pass) |
 
 Closed after the first pass, in **0.3.0**: S2-11 (`TrapezioInterop` is now `@MainActor`),
 S4-5 and S4-6 (the sample's store sets a file-protection class and degrades to in-memory
@@ -47,19 +51,68 @@ instead of calling `fatalError`).
 
 Also in 0.3.0, beyond the review: the deployment floor moved to iOS 17 / macOS 14 and the
 observation layer moved to `@Observable`. That was listed in the review only as a note under
-S3-8; it landed as a deliberate release decision. It removes the manual `objectWillChange.send()`
-and gives property-granular invalidation, and it makes reading `state` off the main actor a
+S3-8; it landed as a deliberate release decision. It removes the manual `objectWillChange.send()`,
+removes the property wrapper from the runtime, and makes reading `state` off the main actor a
 compile error rather than a documented rule.
 
-Still open: S2-7 + S4-8 (deep links and the factory registry — one piece of work, deferred by
-request) and view-level tests for `TrapezioContainer` / `TrapezioNavigationHost`.
+It does **not** buy finer invalidation, and an earlier revision of the README claimed it did.
+`TrapezioRuntime` reads `store.state` — one tracked property holding the whole `State` struct — so
+any state change invalidates the view, exactly as before. Observation is per-property, and a UDF
+store has one state property by design.
+
+**S3-9, missed in the original pass.** The review covered `MESA/`, `Counter/`, CI, and the four
+instruction files, but never opened `.claude/skills/`. Those nine skills are what actually
+generate new code in this repo, and every scaffolding one emitted the pre-0.3.0 API —
+`setupBindings()` from `init`, untracked `strataCollect`, dependencies hoisted out of the
+`TrapezioContainer` autoclosure, a non-isolated `FakeInterop`. `security-check` went further and
+listed `nonisolated(unsafe)` on `TrapezioStore.state` as an *approved* framework pattern, and
+`review` asserted that `executeCatching` throws, which was never true. A stale skill is worse than
+stale prose: it writes the old API into new files. All nine are updated, and the instructions now
+say to update them in the same change as any library API change.
+
+Also fixed here: `AGENTS.md` did not exist. It is now the canonical instructions file, with the
+four tool-specific files as byte-identical copies and the CI sync job comparing against it.
+
+**S4-9.** Covered at three levels.
+
+*Unit* (`MESA/Tests`): `TrapezioStoreBox` is `internal` and directly tested for resolve-once —
+it is the guarantee that replaced `@StateObject`'s autoclosure and the only thing standing
+between an adopter and a rebuilt dependency graph per render. Plus `TrapezioAnyScreen`'s identity
+semantics and `TrapezioLifecycle`'s defaults.
+
+*Hosted* (`CounterTests/TrapezioHostTests`): a `UIHostingController` in a real `UIWindow`, with an
+`@Observable` ticker forcing parent re-renders. This is what proves SwiftUI actually **retains**
+the box — the unit test only proves the box would behave if retained. Also asserts state survives
+a parent re-render and that `onFirstAppear` fires exactly once per view identity, measured by the
+store's task-bag count rather than a flag, so a re-fire shows up as the extra observation task it
+would really be.
+
+*End-to-end* (`CounterUITests`): the target previously held only Xcode's stub, which asserted
+nothing. Now covers the counter round trip through `launch(snapshot:)`, the message queue bound in
+`onFirstAppear`, push/pop preserving store state, one Back returning to the counter after repeated
+taps on the navigation button, and the full Strata path — store to interactor to `ModelActor`
+repository and back through the observation stream.
+
+An earlier revision of this document said host-level testing "genuinely needs a host" and left it
+there. The repository has a host app and an idle UI-test target; that was an excuse, not a
+constraint.
+
+**S4-12.** `CHANGELOG.md`, `CONTRIBUTING.md`, `scripts/sync-agent-docs.sh` with a
+`.githooks/pre-commit` hook (CI runs the same script, so local and CI cannot disagree), and
+`swiftLanguageMode(.v6)` pinned per target rather than inherited from the tools version. Platform
+support was **not** widened to watchOS/tvOS/visionOS — that would advertise support nothing
+verifies.
+
+Still open: S2-7 + S4-8 — deep links and the factory registry, one piece of work, deferred by
+request.
 
 > **Nothing on this branch has been compiled.** The review environment has no Swift toolchain, so
 > CI is the first real build. Highest-risk items, in order: the `@Observable` migration (macro
 > behaviour on a generic `open` class, and `TrapezioContainer`'s lazy store box replacing
 > `@StateObject`'s autoclosure), the XCFramework job in `publish-release.yml` (unverifiable
-> `xcodebuild` archive paths), and the strict-concurrency annotations on the task bag and
-> registries.
+> `xcodebuild` archive paths), the strict-concurrency annotations on the task bag and registries,
+> and the hosted/UI tests — those depend on window setup and runloop timing, so if anything is
+> flaky rather than wrong, start with `TrapezioHostTests.settle()`.
 
 ---
 
@@ -96,7 +149,8 @@ And a cluster of documentation claims are contradicted by the code — most shar
 `CLAUDE.md` state that `strataRunCatching` re-throws `CancellationError`, which is the opposite of
 what it does.
 
-Counts: **7 × S1**, **11 × S2**, **8 × S3**, **12 × S4**.
+Counts: **7 × S1**, **11 × S2**, **9 × S3**, **12 × S4**. (S3-9 was added after the
+first pass — see Status.)
 
 ---
 

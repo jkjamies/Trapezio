@@ -90,18 +90,19 @@ Present findings with checkboxes as you go:
 - [ ] **Store pattern:** `@MainActor final class` extending `TrapezioStore<Screen, State, Event>`
 - [ ] **State immutability:** Mutations only via `update { $0.field = value }`
 - [ ] **Dependencies injected:** Via `init`, not globals or singletons
-- [ ] **Factory pattern:** `TrapezioContainer(makeStore:ui:)` wrapping
+- [ ] **Factory pattern:** `TrapezioContainer(makeStore:ui:)` wrapping, with the whole dependency graph built **inside** the autoclosure
+- [ ] **Lifecycle:** observation started in `TrapezioLifecycle.onFirstAppear()`, navigation results consumed in `onAppear()` — not in `init`
 - [ ] **Navigation:** `TrapezioNavigator` used correctly; screen registered in `ContentView` builder
 - [ ] **Messages:** Transient UI messages use `TrapezioMessageManager`
 
 ### Strata Conventions
 - [ ] Interactors return `StrataResult`, not raw exceptions
 - [ ] `StrataInteractor` overrides `doWork(params:)`, calls via `execute(params:)`
-- [ ] `StrataSubjectInteractor` overrides `createObservable(params:)`
-- [ ] `strataLaunch` used for async work in Stores (not raw `Task { }`)
-- [ ] `strataCollect` used for stream observation
+- [ ] `StrataSubjectInteractor` overrides `createObservable(params:)`; consumers trigger via `callAsFunction(_:)` and read `.stream`, never calling `createObservable` directly
+- [ ] Stores use their own `launch`/`collect` for async work — not raw `Task { }`, and not the untracked free `strata*` functions
+- [ ] Detached work never reads `state` directly; `launch(snapshot:work:reduce:)` used where the work depends on current state
 - [ ] `StrataResult` extensions used idiomatically (`onSuccess`, `onFailure`, `fold`, `map`, `flatMap`, `recover`, etc.)
-- [ ] Loading state bound via `strataCollect(useCase.inProgressStream)`
+- [ ] Loading state bound via `collect(useCase.inProgressStream)`
 
 ### Clean Architecture
 - [ ] Domain layer has no framework imports (no SwiftUI, SwiftData, UIKit — only `Foundation` and `Strata`)
@@ -123,7 +124,7 @@ Present findings with checkboxes as you go:
 - [ ] Error paths and edge cases are tested
 - [ ] Navigation flows are tested (nil navigator doesn't crash)
 - [ ] Fakes exist for new dependencies in `Fakes/` subdirectory or use `TrapezioTest` library (`FakeTrapezioNavigator`, `TestEventSink`)
-- [ ] Async tests use `Task.sleep` for `strataLaunch` timing
+- [ ] Async tests use `Task.sleep`, or `awaitState`, for detached `launch` timing; `awaitState`'s `Bool` result is asserted
 - [ ] Store tests are `@MainActor`
 - [ ] Test doubles marked `@unchecked Sendable` where needed
 
