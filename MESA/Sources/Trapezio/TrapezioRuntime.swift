@@ -18,8 +18,9 @@ import SwiftUI
 
 /// Binds a store to its UI and drives ``TrapezioLifecycle`` from the hosting view.
 ///
-/// The store needs no property wrapper: `@Observable` registers a dependency on whichever
-/// fields of `state` the UI actually reads during `body`.
+/// The store needs no property wrapper: reading `presenter.state` during `body` is enough for
+/// `@Observable` to register the dependency. That dependency is on the whole `state` property —
+/// not on the individual fields the UI reads — so any state change invalidates this view.
 ///
 /// Generic parameters are suffixed `Type` so that `State` unambiguously means `SwiftUI.State`
 /// inside this declaration.

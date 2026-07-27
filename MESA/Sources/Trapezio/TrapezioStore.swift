@@ -21,9 +21,12 @@ import SwiftUI
 ///
 /// `TrapezioStore` is the brain of every MESA feature. It holds the current ``State``,
 /// receives user intents as ``Event`` values, and mutates state via ``update(_:)``.
-/// SwiftUI observes state changes through the `@Observable` macro, which tracks reads at
-/// property granularity — a view that only reads `state.count` is not invalidated by a change
-/// to another field.
+/// SwiftUI observes state changes through the `@Observable` macro.
+///
+/// Observation is per *property*, not per field of `State`. ``TrapezioRuntime`` reads the whole
+/// ``state`` property, so any change to state invalidates the view — the same granularity
+/// `ObservableObject` gave, and a UDF store has one state property by design. ``update(_:)``'s
+/// `Equatable` check is what prevents a no-op write from invalidating anything.
 ///
 /// Subclass this for each feature and override ``handle(event:)`` to map events to state changes:
 ///
@@ -62,7 +65,8 @@ open class TrapezioStore<S: TrapezioScreen, State: TrapezioState, Event: Trapezi
     /// take a `Sendable` snapshot on the main actor first — see
     /// ``launch(priority:snapshot:work:reduce:)``.
     ///
-    /// Reading this from a SwiftUI `body` registers a dependency on the specific fields touched.
+    /// Reading this from a SwiftUI `body` registers a dependency on the whole property, not on
+    /// the individual fields touched, so any state change invalidates that view.
     public private(set) var state: State
 
     /// Cancellation scope for work started by this store.
